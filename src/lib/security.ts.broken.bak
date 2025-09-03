@@ -1,0 +1,50 @@
+﻿import { fetchCATSAEstimateMinutes, fetchTSAEstimateMinutes } from "./live";
+
+export type SecuritySource = "override" | "catsa" | "tsa" | "heuristic";
+export type SecurityWaitResult = { minutes: number; source: SecuritySource; detail?: string };
+
+export async function getSecurityWaitMinutes(
+  airportIata: string,
+  depLocalISO: string,
+  trustedTraveler: boolean | undefined,
+  overrideMin?: number
+): Promise<SecurityWaitResult> {
+  // override wins
+  if (typeof overrideMin === "number" && overrideMin >= 0) {
+    let m = Math.max(5, Math.round(overrideMin));
+    if (trustedTraveler) m = Math.max(5, Math.round(m * 0.65));
+    return { minutes: Math.min(90, m), source: "override" };
+  }
+
+  const iata = airportIata.toUpperCase();
+
+  // CATSA first
+  const catsa = await fetchCATSAEstimateMinutes(iata);
+  if (typeof catsa === "number") {
+    let m = catsa;
+    if (trustedTraveler) m = Math.max(5, Math.round(m * 0.65));
+    return { minutes: Math.min(90, Math.max(5, m)), source: "catsa" };
+  }
+
+  // TSA next (with detail)
+  const tsa = await fetchTSAEstimateMinutes(iata);
+  if (typeof tsa.minutes === "number") {
+    let m = tsa.minutes;
+    if (trustedTraveler) m = Math.max(5, Math.round(m * 0.65));
+    return { minutes: Math.min(90, Math.max(5, m)), source: "tsa", detail: tsa.detail };
+  }
+
+  // Heuristic fallback
+  const hour = new Date(depLocalISO).getHours();
+  let base = 15;
+  if (hour >= 5 && hour < 8) base = 30;
+  else if (hour >= 8 && hour < 11) base = 20;
+  else if (hour >= 11 && hour < 15) base = 15;
+  else if (hour >= 15 && hour < 19) base = 20;
+  else if (hour >= 19 && hour < 23) base = 10;
+  else base = 8;
+
+  let minutes = base;
+  if (trustedTraveler) minutes = Math.max(5, Math.round(minutes * 0.65));
+  return { minutes: Math.min(90, Math.max(5, minutes)), source: "heuristic", detail: "no TSA data" };
+}

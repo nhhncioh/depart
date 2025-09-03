@@ -1,0 +1,71 @@
+﻿/**
+ * Aerodatabox (RapidAPI) client — departures for a local date.
+ * Primary: /flights/airports/icao/{icao}/{date}T00:00/{date}T23:59?direction=Departure
+ * Fallback: /flights/airports/icao/{icao}/{date}?direction=Departure
+ */
+export type ADBFlight = any;
+
+async function fetchJson(url: string, headers: Record<string, string>) {
+  const res = await fetch(url, { headers, cache: "no-store", next: { revalidate: 60 } });
+  const text = await res.text();
+  try { return { ok: res.ok, status: res.status, body: JSON.parse(text) as any, url }; }
+  catch { return { ok: res.ok, status: res.status, body: text as any, url }; }
+}
+
+export async function fetchDayDepartures(icao: string, isoDate: string): Promise<ADBFlight[] | null> {
+  const key =
+    process.env.AERODATABOX_RAPIDAPI_KEY ||
+    process.env.AERODATABOX_RAPID_KEY ||
+    process.env.RAPIDAPI_KEY;
+
+  const host = "aerodatabox.p.rapidapi.com";
+  if (!key) {
+    console.warn("[ADB] Missing API key: set AERODATABOX_RAPIDAPI_KEY (or RAPIDAPI_KEY)");
+    return null;
+  }
+  if (!icao || !isoDate) {
+    console.warn("[ADB] fetchDayDepartures: missing ICAO or date", { icao, isoDate });
+    return null;
+  }
+
+  // Build candidate URLs (try time-range first)
+  const d = encodeURIComponent(isoDate);
+  const i = encodeURIComponent(icao);
+  const base = `https://${host}/flights/airports/icao/${i}`;
+  const q = `withLeg=true&withCodeshared=true&withCancelled=true&withCargo=false&withPrivate=false&withLocation=false&direction=Departure`;
+
+  const endpoints = [
+    `${base}/${d}T00:00/${d}T23:59?${q}`,
+    `${base}/${d}?${q}`, // fallback variant
+  ];
+
+  const headers = {
+    "X-RapidAPI-Key": key,
+    "X-RapidAPI-Host": host,
+    "Accept": "application/json",
+  };
+
+  for (const url of endpoints) {
+    const out = await fetchJson(url, headers);
+
+    if (!out.ok) {
+      // 404 => try next; other errors get logged verbosely
+      if (out.status !== 404) console.warn("[ADB] fetch failed", { status: out.status, url: out.url, body: out.body });
+      else console.warn("[ADB] 404 on", out.url);
+      continue;
+    }
+
+    const b: any = out.body;
+    // Aerodatabox commonly returns { departures: [...] } for this endpoint
+    if (Array.isArray(b?.departures)) return b.departures;
+    if (Array.isArray(b)) return b;
+    if (Array.isArray(b?.flights)) return b.flights;
+    if (Array.isArray(b?.items)) return b.items;
+
+    console.warn("[ADB] Unrecognized response shape", { url: out.url, keys: b && Object.keys(b) });
+    return null;
+  }
+
+  console.warn("[ADB] all endpoints returned 404 for", { icao, isoDate });
+  return null;
+}

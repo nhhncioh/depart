@@ -1,0 +1,128 @@
+﻿import { iataToIcao, capacityTierFor, saturationFor } from "./airports";
+import { fetchDayDepartures } from "./aerodatabox";
+import { estimateSecurityWaitMinutes } from "./security";
+
+/** Shared types */
+export type ScheduleBusyness = {
+  departuresInWindow: number | null;   // null => no data
+  busynessPercent: number | null;      // null => no data
+  note?: string;
+};
+
+function pickDepartureISO(f: any): string | null {
+  const cand = [
+    f?.movement?.scheduledTimeLocal,
+    f?.movement?.scheduledTimeUtc,
+    f?.departure?.scheduledTimeLocal,
+    f?.departure?.scheduledTimeUtc,
+    f?.time?.scheduled?.departure?.local,
+    f?.time?.scheduled?.departure?.utc,
+  ].filter(Boolean);
+  return cand.length ? String(cand[0]) : null;
+}
+
+function withinMinutes(aISO: string, bISO: string, windowMin: number): boolean {
+  const a = new Date(aISO).getTime();
+  const b = new Date(bISO).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return false;
+  return Math.abs(a - b) / 60000 <= windowMin;
+}
+
+/** Public: schedule-based busyness using Aerodatabox day feed */
+export async function getScheduleBusyness(
+  airportIata: string,
+  depLocalISO: string,
+  windowMin = 90
+): Promise<ScheduleBusyness> {
+  const icao = iataToIcao(airportIata);
+  if (!icao) {
+    return { departuresInWindow: null, busynessPercent: null, note: "no ICAO mapping" };
+  }
+
+  const isoDate = depLocalISO.slice(0, 10); // YYYY-MM-DD (local part)
+  const list = await fetchDayDepartures(icao, isoDate);
+
+  if (list === null) {
+    return { departuresInWindow: null, busynessPercent: null, note: "no schedule data (API/limit)" };
+  }
+
+  const inWindow = list.filter((f) => {
+    const when = pickDepartureISO(f);
+    return when ? withinMinutes(when, depLocalISO, windowMin) : false;
+  });
+
+  const count = inWindow.length;
+  const tier  = capacityTierFor(airportIata);
+  const sat   = saturationFor(tier);
+  const percent = Math.min(100, Math.round((count / sat) * 100));
+
+  return { departuresInWindow: count, busynessPercent: percent, note: "schedule+load" };
+}
+
+/**
+ * Compatibility shim for compute.ts:
+ * predictSecurityFromScheduleWithLoad(airport, depLocalISO, opts?)
+ * - Returns a minutes estimate and meta containing busyness%.
+ * - If we have no schedule data, we fall back to hour-of-day baseline.
+ */
+export async function predictSecurityFromScheduleWithLoad(
+  airportOrObj: any,
+  depMaybe?: string,
+  optsMaybe?: any
+): Promise<{ minutes: number; meta: any }> {
+  // Support both signatures:
+  //   (airport, depLocalISO, opts?)
+  //   ({ airport, depLocalISO, options? })
+  let airport = "";
+  let depLocalISO = "";
+  let options: any = {};
+
+  if (typeof airportOrObj === "string") {
+    airport = airportOrObj;
+    depLocalISO = String(depMaybe);
+    options = optsMaybe || {};
+  } else if (airportOrObj && typeof airportOrObj === "object") {
+    airport = airportOrObj.airport || airportOrObj.airportIata || "";
+    depLocalISO = airportOrObj.depLocalISO || airportOrObj.depTimeLocalISO || "";
+    options = airportOrObj.options || {};
+  }
+
+  // Base wait by hour (your existing heuristic), honor trusted traveler
+  const base = estimateSecurityWaitMinutes(airport, depLocalISO, !!options?.trustedTraveler);
+
+  // Get schedule busyness near this time
+  const bus = await getScheduleBusyness(airport, depLocalISO, 90);
+
+  // If no data, just return baseline with a note
+  if (bus.busynessPercent === null) {
+    return {
+      minutes: base,
+      meta: {
+        securitySource: "estimate",           // keeps UI label as "Estimate"
+        securityDetail: "baseline (no schedule data)",
+        busynessPercent: null,
+        departuresInWindow: bus.departuresInWindow,
+        busynessSource: bus.note || "none",
+      },
+    };
+  }
+
+  // Convert busyness% to a mild multiplicative adjustment around baseline.
+  // 0% => ~0.7x, 50% => 1.0x, 100% => ~1.3x
+  const factor = 0.7 + (bus.busynessPercent / 100) * 0.6;
+  const minutes = Math.max(5, Math.min(120, Math.round(base * factor)));
+
+  return {
+    minutes,
+    meta: {
+      securitySource: "estimate",                 // still not live; UI will show Estimate
+      securityDetail: `schedule+load (${bus.busynessPercent}% · ${bus.departuresInWindow ?? "?"} deps in ±90m)`,
+      busynessPercent: bus.busynessPercent,
+      departuresInWindow: bus.departuresInWindow,
+      busynessSource: bus.note || "schedule+load",
+    },
+  };
+}
+
+// Also provide a default export for legacy imports
+export default { getScheduleBusyness, predictSecurityFromScheduleWithLoad };

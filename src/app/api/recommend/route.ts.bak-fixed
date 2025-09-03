@@ -1,0 +1,48 @@
+﻿import { NextResponse } from "next/server";
+// keep the same relative style the project already uses
+import { recommend } from "../../../lib/compute";
+import { predictSecurityFromScheduleWithLoad } from "../../../lib/scheduleLoad";
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+
+    // 1) main recommendation (existing behavior)
+    const result: any = await recommend(body);
+
+    // 2) schedule-driven meta for humans (wait window, label, busyness score)
+    try {
+      const sched = await predictSecurityFromScheduleWithLoad({
+        airport: body?.airport || body?.airportIata,
+        depLocalISO: body?.depTimeLocalISO || body?.depLocalISO,
+        options: body?.options,
+      });
+
+      const m = sched?.meta || {};
+      // Create / merge meta block the UI can read
+      result.meta = {
+        ...(result.meta || {}),
+        // human-facing fields
+        securityWaitMin: m.securityWaitMin,
+        securityWaitMax: m.securityWaitMax,
+        securitySummary: m.securitySummary,
+        busynessLabel: m.busynessLabel,
+        // machine-facing busyness block used by the meter
+        busyness: {
+          score: m.busynessPercent,
+          source: m.busynessSource,
+        },
+        // keep a couple useful numbers
+        departuresInWindow: m.departuresInWindow,
+        securityDeltaVsTypicalMin: m.securityDeltaVsTypicalMin,
+      };
+    } catch (e) {
+      console.warn("[API] attach schedule meta failed", e);
+    }
+
+    return NextResponse.json({ ok: true, result });
+  } catch (err: any) {
+    console.error("[API] recommend error", err);
+    return NextResponse.json({ ok: false, error: err?.message ?? "Server error" }, { status: 500 });
+  }
+}

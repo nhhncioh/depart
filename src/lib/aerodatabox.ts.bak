@@ -1,0 +1,43 @@
+﻿/**
+ * Aerodatabox (RapidAPI) minimal client
+ * We fetch the day's departures for an ICAO airport code, then filter by time window.
+ * Endpoint (RapidAPI): /flights/departures/{icao}/{YYYY-MM-DD}
+ * Docs: https://rapidapi.com/aedbx-aedbx/api/aerodatabox
+ */
+export type ADBFlight = any;
+
+async function fetchJson(url: string, headers: Record<string, string>) {
+  const res = await fetch(url, { headers, cf: { cacheEverything: false } as any });
+  const text = await res.text();
+  try {
+    return { ok: res.ok, status: res.status, body: JSON.parse(text) };
+  } catch {
+    return { ok: res.ok, status: res.status, body: text };
+  }
+}
+
+export async function fetchDayDepartures(icao: string, isoDate: string): Promise<ADBFlight[] | null> {
+  const key = process.env.AERODATABOX_RAPID_KEY;
+  if (!key) return null;
+
+  const base = "https://aerodatabox.p.rapidapi.com";
+  const url = `${base}/flights/departures/${icao}/${isoDate}` +
+              `?limit=500&withLeg=true&withCodeshared=true&withCancelled=true&withCargo=true&withPrivate=true`;
+
+  const headers = {
+    "x-rapidapi-key": key,
+    "x-rapidapi-host": "aerodatabox.p.rapidapi.com",
+    "Accept": "application/json"
+  };
+
+  const out = await fetchJson(url, headers);
+  if (!out.ok) return null;
+
+  const b = out.body as any;
+  // Be tolerant about shapes
+  if (Array.isArray(b)) return b;
+  if (Array.isArray(b?.departures)) return b.departures;
+  if (Array.isArray(b?.flights)) return b.flights;
+  if (Array.isArray(b?.items)) return b.items;
+  return null;
+}

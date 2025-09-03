@@ -1,0 +1,78 @@
+﻿/**
+ * Aerodatabox (RapidAPI) client — departures around a local target time.
+ * We convert the user-selected LOCAL time to UTC, then query a ±6h window (<=12h API limit).
+ */
+export type ADBFlight = any;
+
+function normalizeISO(s: string): string {
+  let t = (s || "").trim();
+  t = t.replace(/^(\d{4}-\d{2}-\d{2})\s+/, "$1T");
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(t)) t += ":00";
+  return t;
+}
+
+async function fetchJson(url: string, headers: Record<string, string>) {
+  const res = await fetch(url, { headers, cache: "no-store", next: { revalidate: 60 } });
+  const text = await res.text();
+  try { return { ok: res.ok, status: res.status, body: JSON.parse(text) as any, url }; }
+  catch { return { ok: res.ok, status: res.status, body: text as any, url }; }
+}
+
+/**
+ * Fetch departures in a ±hours window around the provided *local* ISO time.
+ * Note: we treat the provided ISO as local machine time; for ET airports (YYZ/YOW/JFK) that's correct.
+ * (You can add true per-airport time zone conversion later.)
+ */
+export async function fetchDeparturesAround(icao: string, depLocalISO: string, hours = 6): Promise<ADBFlight[] | null> {
+  const key =
+    process.env.AERODATABOX_RAPIDAPI_KEY ||
+    process.env.AERODATABOX_RAPID_KEY ||
+    process.env.RAPIDAPI_KEY;
+
+  const host = "aerodatabox.p.rapidapi.com";
+  if (!key) {
+    console.warn("[ADB] Missing API key: set AERODATABOX_RAPIDAPI_KEY (or RAPIDAPI_KEY)");
+    return null;
+  }
+  if (!icao || !depLocalISO) {
+    console.warn("[ADB] fetchDeparturesAround: missing ICAO or depLocalISO", { icao, depLocalISO });
+    return null;
+  }
+
+  // Local -> UTC window
+  const local = new Date(normalizeISO(depLocalISO));     // interpreted in server's local TZ (ET on your dev box)
+  if (!Number.isFinite(local.getTime())) {
+    console.warn("[ADB] invalid depLocalISO", { depLocalISO });
+    return null;
+  }
+  const ms = hours * 60 * 60 * 1000;
+  const fromUTC = new Date(local.getTime() - ms).toISOString().slice(0, 16); // "YYYY-MM-DDTHH:mm"
+  const toUTC   = new Date(local.getTime() + ms).toISOString().slice(0, 16);
+
+  const i = encodeURIComponent(icao);
+  const base = `https://${host}/flights/airports/icao/${i}`;
+  const q = `withLeg=true&withCodeshared=true&withCancelled=true&withCargo=false&withPrivate=false&withLocation=false&direction=Departure`;
+
+  const url = `${base}/${fromUTC}/${toUTC}?${q}`;
+  const headers = {
+    "X-RapidAPI-Key": key,
+    "X-RapidAPI-Host": host,
+    "Accept": "application/json",
+  };
+
+  const out = await fetchJson(url, headers);
+  if (!out.ok) {
+    console.warn("[ADB] fetch failed", { status: out.status, url: out.url, body: out.body });
+    return null;
+  }
+
+  const b: any = out.body;
+  // Common shapes
+  if (Array.isArray(b?.departures)) return b.departures;
+  if (Array.isArray(b)) return b;
+  if (Array.isArray(b?.flights)) return b.flights;
+  if (Array.isArray(b?.items)) return b.items;
+
+  console.warn("[ADB] Unrecognized response shape", { url: out.url, keys: b && Object.keys(b) });
+  return null;
+}

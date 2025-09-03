@@ -1,0 +1,50 @@
+﻿import { getLiveSecurityForAirport, estimateByHour } from "./live";
+
+export type SecuritySource = "override" | "catsa" | "tsa" | "heuristic";
+export type SecurityWaitResult = { minutes: number; source: SecuritySource; detail?: string };
+
+/**
+ * Legacy helper kept for callers that only need a quick estimate.
+ * This mirrors the hour-of-day heuristic and applies trusted-traveler reduction.
+ */
+export function estimateSecurityWaitMinutes(
+  airportIata: string,
+  depLocalISO: string,
+  trustedTraveler?: boolean
+): number {
+  return estimateByHour(airportIata, depLocalISO, trustedTraveler);
+}
+
+/**
+ * Get the best available security wait estimate for an airport at a given time.
+ * - Respects an explicit override if provided
+ * - Tries live sources (CATSA for Canada, TSA feeds) when possible
+ * - Falls back to a by-hour heuristic
+ */
+export async function getSecurityWaitMinutes(
+  airportIata: string,
+  depLocalISO: string,
+  trustedTraveler?: boolean,
+  overrideMin?: number
+): Promise<SecurityWaitResult> {
+  // 1) Explicit override
+  if (typeof overrideMin === "number" && overrideMin >= 0) {
+    let m = Math.max(5, Math.round(overrideMin));
+    if (trustedTraveler) m = Math.max(5, Math.round(m * 0.65));
+    return { minutes: Math.min(90, m), source: "override" };
+  }
+
+  // 2) Live sources (returns minutes for standard travelers)
+  const live = await getLiveSecurityForAirport(airportIata);
+  if (live?.minutes) {
+    let m = live.minutes;
+    if (trustedTraveler) m = Math.max(5, Math.round(m * 0.65));
+    // Map the live source label to our union type
+    const src: SecuritySource = live.source === "catsa" ? "catsa" : "tsa";
+    return { minutes: Math.min(90, Math.max(5, m)), source: src, detail: live.detail };
+  }
+
+  // 3) Heuristic fallback by hour of day (already accounts for trusted traveler)
+  const minutes = estimateByHour(airportIata, depLocalISO, trustedTraveler);
+  return { minutes: Math.min(90, Math.max(5, minutes)), source: "heuristic", detail: "by-hour baseline" };
+}

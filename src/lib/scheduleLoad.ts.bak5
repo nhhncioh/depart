@@ -1,0 +1,145 @@
+﻿import { iataToIcao, capacityTierFor, saturationFor, CapacityTier } from "./airports";
+import { fetchDayDepartures } from "./aerodatabox";
+import { estimateSecurityWaitMinutes } from "./security";
+
+/** Internal (raw) busyness */
+export type ScheduleBusyness = {
+  departuresInWindow: number | null;   // null => no data
+  busynessPercent: number | null;      // null => no data
+  note?: string;
+};
+
+function clamp(n: number, lo: number, hi: number) { return Math.min(hi, Math.max(lo, n)); }
+
+function pickDepartureISO(f: any): string | null {
+  const cand = [
+    f?.movement?.scheduledTimeLocal,
+    f?.movement?.scheduledTimeUtc,
+    f?.departure?.scheduledTimeLocal,
+    f?.departure?.scheduledTimeUtc,
+    f?.time?.scheduled?.departure?.local,
+    f?.time?.scheduled?.departure?.utc,
+  ];
+  for (const c of cand) if (c && typeof c === "string") return c;
+  return null;
+}
+function withinMinutes(aISO: string, bISO: string, windowMin: number): boolean {
+  const a = new Date(aISO).getTime();
+  const b = new Date(bISO).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return Math.abs(a - b) / 60000 <= windowMin;
+}
+
+/** Public: schedule-based busyness using Aerodatabox day feed */
+export async function getScheduleBusyness(
+  airportIata: string,
+  depLocalISO: string,
+  windowMin = 90
+): Promise<ScheduleBusyness> {
+  const icao = iataToIcao(airportIata);
+  if (!icao) {
+    return { departuresInWindow: null, busynessPercent: null, note: "no ICAO mapping" };
+  }
+
+  const isoDate = depLocalISO.slice(0, 10); // YYYY-MM-DD (local)
+  const list = await fetchDayDepartures(icao, isoDate);
+  if (list === null) {
+    return { departuresInWindow: null, busynessPercent: null, note: "no schedule data (API/limit)" };
+  }
+
+  const inWindow = list.filter((f) => {
+    const when = pickDepartureISO(f);
+    return when ? withinMinutes(when, depLocalISO, windowMin) : false;
+  });
+
+  const count = inWindow.length;
+  const tier  = capacityTierFor(airportIata);
+  const sat   = saturationFor(tier);
+  const percent = clamp(Math.round((count / sat) * 100), 0, 100);
+  return { departuresInWindow: count, busynessPercent: percent, note: "schedule+load" };
+}
+
+/** Shape that compute.ts expects on return: */
+type LegacyBusynessOut = { source: string; count: number; score: number; capacityTier: CapacityTier; windowMin: number; };
+
+function toLegacyBusyness(airportIata: string, sb: ScheduleBusyness, windowMin: number): LegacyBusynessOut {
+  const tier = capacityTierFor(airportIata);
+  return {
+    source: sb.note || "schedule+load",
+    count: sb.departuresInWindow ?? 0,
+    score: sb.busynessPercent ?? 0,
+    capacityTier: tier,
+    windowMin,
+  };
+}
+
+/**
+ * Predict security wait using schedule busyness.
+ * Returns the legacy fields compute.ts reads ({ minutes, detail, busyness })
+ * AND a `meta` block your UI uses ({ busynessPercent, departuresInWindow, busynessSource, securitySource, securityDetail }).
+ */
+export async function predictSecurityFromScheduleWithLoad(
+  airportOrObj: any,
+  depMaybe?: string,
+  optsMaybe?: any
+): Promise<{ minutes: number; detail: string; busyness: LegacyBusynessOut; meta: any }> {
+  const WINDOW = 90;
+
+  // Support both signatures:
+  //  (airport, depLocalISO, opts?)
+  //  ({ airport, depLocalISO, options? })
+  let airport = "";
+  let depLocalISO = "";
+  let options: any = {};
+  if (typeof airportOrObj === "string") {
+    airport = airportOrObj;
+    depLocalISO = String(depMaybe);
+    options = optsMaybe || {};
+  } else if (airportOrObj && typeof airportOrObj === "object") {
+    airport = airportOrObj.airport || airportOrObj.airportIata || "";
+    depLocalISO = airportOrObj.depLocalISO || airportOrObj.depTimeLocalISO || "";
+    options = airportOrObj.options || {};
+  }
+
+  // Baseline (hour-of-day) w/ trusted-traveler
+  const base = estimateSecurityWaitMinutes(airport, depLocalISO, !!options?.trustedTraveler);
+
+  // Schedule busyness near this time
+  const bus = await getScheduleBusyness(airport, depLocalISO, WINDOW);
+  const legacy = toLegacyBusyness(airport, bus, WINDOW);
+
+  if (bus.busynessPercent === null) {
+    return {
+      minutes: base,
+      detail: "baseline (no schedule data)",
+      busyness: legacy,
+      meta: {
+        securitySource: "estimate",
+        securityDetail: "baseline (no schedule data)",
+        busynessPercent: null,
+        departuresInWindow: bus.departuresInWindow,
+        busynessSource: bus.note || "none",
+      },
+    };
+  }
+
+  // Convert busyness% to mild multiplicative adjustment around baseline: 0% -> ~0.7x, 100% -> ~1.3x
+  const factor = 0.7 + (bus.busynessPercent / 100) * 0.6;
+  const minutes = clamp(Math.round(base * factor), 5, 120);
+
+  return {
+    minutes,
+    detail: `schedule+load (${bus.busynessPercent}% · ${bus.departuresInWindow ?? "?"} deps in ±${WINDOW}m)`,
+    busyness: legacy,
+    meta: {
+      securitySource: "estimate",
+      securityDetail: `schedule+load (${bus.busynessPercent}% · ${bus.departuresInWindow ?? "?"} deps in ±${WINDOW}m)`,
+      busynessPercent: bus.busynessPercent,
+      departuresInWindow: bus.departuresInWindow,
+      busynessSource: bus.note || "schedule+load",
+    },
+  };
+}
+
+// Default export for any legacy imports
+export default { getScheduleBusyness, predictSecurityFromScheduleWithLoad };

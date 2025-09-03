@@ -1,0 +1,35 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* App surface (fallback bg, we also add per-page gradient via className) */
+:root { --bg: #f6f7fb; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: #111827; /* gray-900 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: -apple-system,"SF Pro Text","SF Pro Display",system-ui,"Segoe UI","Helvetica Neue",Arial,"Noto Sans",sans-serif;
+}
+
+/* Inputs (pure CSS; no @apply so v4 is happy) */
+input[type="text"],
+input[type="datetime-local"],
+input[type="number"],
+select,
+textarea {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.08);
+  background: #fff;
+  padding: 10px 12px;
+  font-size: 0.925rem;
+  line-height: 1.3;
+  box-shadow: 0 1px 2px rgba(0,0,0,.05);
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(99,102,241,.25); /* indigo-500 focus */
+}
+button:focus-visible { outline: none; }
