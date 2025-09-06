@@ -12,6 +12,7 @@ type FormState = {
   hasNexus: boolean;
   isInternational: boolean;
   flightNumber?: string;
+  alreadyCheckedIn: boolean; // NEW FIELD
 };
 
 const PROFILE_KEY = "depart:profile";
@@ -27,7 +28,8 @@ export default function HomePage(){
     checkedBag: false,
     hasNexus: false,
     isInternational: false,
-    flightNumber: ""
+    flightNumber: "",
+    alreadyCheckedIn: false // NEW FIELD
   });
   const [lookupMsg, setLookupMsg] = useState<string>("");
 
@@ -43,7 +45,8 @@ export default function HomePage(){
           checkedBag: !!prof.checkedBag,
           hasNexus: !!prof.hasNexus,
           isInternational: !!prof.isInternational,
-          airline: prof.preferredAirline || prev.airline
+          airline: prof.preferredAirline || prev.airline,
+          alreadyCheckedIn: !!prof.alreadyCheckedIn // NEW FIELD
         }));
       }
     }catch{}
@@ -93,7 +96,8 @@ export default function HomePage(){
         preferredAirline: form.airline || undefined,
         checkedBag: form.checkedBag,
         hasNexus: form.hasNexus,
-        isInternational: form.isInternational
+        isInternational: form.isInternational,
+        alreadyCheckedIn: form.alreadyCheckedIn // NEW FIELD
       };
       localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
       setLookupMsg("Defaults saved.");
@@ -118,6 +122,7 @@ export default function HomePage(){
       hasNexus: !!form.hasNexus,
       isInternational: !!form.isInternational,
       flightNumber: (form.flightNumber||"").trim() || undefined,
+      alreadyCheckedIn: !!form.alreadyCheckedIn, // NEW FIELD
       submittedAt: Date.now()
     };
     try { sessionStorage.setItem("depart:lastPayload", JSON.stringify(payload)); } catch {}
@@ -147,7 +152,7 @@ export default function HomePage(){
           <div className="card-inner">
             <div className="kicker">Plan</div>
             <h1>When is your flight?</h1>
-            <p className="sub">We’ll crunch security, buffer and timing to suggest when you should arrive at the airport.</p>
+            <p className="sub">We'll crunch security, buffer and timing to suggest when you should arrive at the airport.</p>
 
             <form className="grid" onSubmit={onSubmit}>
               <div className="grid grid-2">
@@ -177,6 +182,11 @@ export default function HomePage(){
               </div>
 
               <div className="grid grid-2">
+                {/* NEW CHECKBOX - Place first in the grid */}
+                <label className="check">
+                  <input type="checkbox" name="alreadyCheckedIn" checked={form.alreadyCheckedIn} onChange={onChange} />
+                  <div>Already checked in<div className="hint">Skip check-in time (only works with carry-on only)</div></div>
+                </label>
                 <label className="check">
                   <input type="checkbox" name="isInternational" checked={form.isInternational} onChange={onChange} />
                   <div>International flight<div className="hint">Adds time for passport/doc checks & gate processes</div></div>
@@ -193,7 +203,16 @@ export default function HomePage(){
 
               <div className="footer-row">
                 <button type="button" className="btn btn-secondary" onClick={()=>{
-                  setForm({airport:"", airline:"", departureLocal:"", checkedBag:false, hasNexus:false, isInternational:false, flightNumber:""});
+                  setForm({
+                    airport:"", 
+                    airline:"", 
+                    departureLocal:"", 
+                    checkedBag:false, 
+                    hasNexus:false, 
+                    isInternational:false, 
+                    flightNumber:"",
+                    alreadyCheckedIn:false // NEW FIELD
+                  });
                 }}>Clear</button>
                 <button type="button" className="btn btn-secondary" onClick={saveProfile}>Save defaults</button>
                 <button type="button" className="btn btn-secondary" onClick={clearProfile}>Clear defaults</button>

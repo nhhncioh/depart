@@ -24,8 +24,19 @@ function normalize(body: any){
   const checkedBag      = !!(body?.checkedBag ?? body?.hasBag ?? body?.bag ?? false);
   const hasNexus        = !!(body?.hasNexus ?? body?.nexus ?? body?.trustedTraveler ?? false);
   const isInternational = !!(body?.isInternational ?? body?.international ?? body?.intl ?? false);
+  const alreadyCheckedIn = !!(body?.alreadyCheckedIn ?? body?.checkedIn ?? false); // NEW FIELD
 
-  return { airport, airline, depMs, depISO: depMs ? new Date(depMs).toISOString() : undefined, checkedBag, hasNexus, isInternational, raw: body };
+  return { 
+    airport, 
+    airline, 
+    depMs, 
+    depISO: depMs ? new Date(depMs).toISOString() : undefined, 
+    checkedBag, 
+    hasNexus, 
+    isInternational, 
+    alreadyCheckedIn, // NEW FIELD
+    raw: body 
+  };
 }
 
 function deriveTraffic(depMs:number){
@@ -89,9 +100,16 @@ function overallAndConfidence(trafficLevel:string, securityOutlook:string, depMs
   return { overall, confidence: { level, score } };
 }
 
-function buildPlan({ depMs, checkedBag, hasNexus, isInternational }){
+function buildPlan({ depMs, checkedBag, hasNexus, isInternational, alreadyCheckedIn }){
   const traffic = deriveTraffic(depMs);
-  const checkInMinutes = (checkedBag ? 35 : 20) + (isInternational ? 15 : 0);
+  
+  // UPDATED LOGIC: Only add check-in time if NOT already checked in, OR if they have a checked bag
+  let checkInMinutes = 0;
+  if (!alreadyCheckedIn || checkedBag) {
+    checkInMinutes = (checkedBag ? 35 : 20) + (isInternational ? 15 : 0);
+  }
+  // If already checked in AND no checked bag, checkInMinutes stays 0
+  
   const sec = securityFrom(traffic.level, hasNexus, isInternational);
   const cont = contingencyFrom(depMs, traffic.level, checkedBag, hasNexus, isInternational);
   const toGateMinutes = 15;
@@ -106,6 +124,19 @@ function buildPlan({ depMs, checkedBag, hasNexus, isInternational }){
 
   const meta = overallAndConfidence(traffic.level, sec.outlook, depMs, hasNexus, isInternational, "fallback");
 
+  // Updated notes to reflect the new logic
+  const notes = [];
+  if (alreadyCheckedIn && !checkedBag) {
+    notes.push("Already checked in with carry-on only—no check-in time added.");
+  } else if (checkedBag) {
+    notes.push("Includes time for checked-bag drop and check-in.");
+  } else {
+    notes.push("Carry-on only, no bag-drop time added.");
+  }
+  
+  notes.push(hasNexus ? "NEXUS expected to shorten security screening." : "Security time based on regular screening.");
+  notes.push(isInternational ? "International departure—extra time for passport/visa checks and gate procedures." : "Domestic departure.");
+
   return {
     arriveBy: new Date(arriveByMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     bufferMinutes: total,
@@ -113,13 +144,9 @@ function buildPlan({ depMs, checkedBag, hasNexus, isInternational }){
     routeType: isInternational ? "International" : "Domestic",
     components: { checkInMinutes, securityMinutes: sec.minutes, toGateMinutes, contingencyMinutes: cont.minutes },
     explanation: {
-      checkedBag, hasNexus, isInternational,
+      checkedBag, hasNexus, isInternational, alreadyCheckedIn, // Add alreadyCheckedIn to explanation
       contingencyReason: cont.reason,
-      notes: [
-        checkedBag ? "Includes time for checked-bag drop and check-in." : "Carry-on only, no bag-drop time added.",
-        hasNexus ? "NEXUS expected to shorten security screening." : "Security time based on regular screening.",
-        isInternational ? "International departure—extra time for passport/visa checks and gate procedures." : "Domestic departure."
-      ]
+      notes
     },
     timeline: {
       arriveByISO: ts(arriveByMs),
@@ -133,7 +160,16 @@ function buildPlan({ depMs, checkedBag, hasNexus, isInternational }){
   };
 }
 
-async function callExistingCompute(input: { airport: string; depMs: number; depISO: string; airline?: string; checkedBag?: boolean; hasNexus?: boolean; isInternational?: boolean }) {
+async function callExistingCompute(input: { 
+  airport: string; 
+  depMs: number; 
+  depISO: string; 
+  airline?: string; 
+  checkedBag?: boolean; 
+  hasNexus?: boolean; 
+  isInternational?: boolean;
+  alreadyCheckedIn?: boolean; // NEW PARAMETER
+}) {
   let mod: any = null;
   try { mod = await import("../../../lib/compute"); } catch {}
   const candidateFns = ["recommend","getRecommendation","computeRecommendation","makeRecommendation","recommendArrival"];
@@ -141,9 +177,33 @@ async function callExistingCompute(input: { airport: string; depMs: number; depI
   if (!fnName) return null;
 
   const args = [
-    { airport: input.airport, departureEpochMs: input.depMs, airline: input.airline, checkedBag: input.checkedBag, hasNexus: input.hasNexus, isInternational: input.isInternational },
-    { airport: input.airport, departureLocalISO: input.depISO, airline: input.airline, checkedBag: input.checkedBag, hasNexus: input.hasNexus, isInternational: input.isInternational },
-    { airportCode: input.airport, flightDateTime: input.depISO, airline: input.airline, checkedBag: input.checkedBag, hasNexus: input.hasNexus, isInternational: input.isInternational },
+    { 
+      airport: input.airport, 
+      departureEpochMs: input.depMs, 
+      airline: input.airline, 
+      checkedBag: input.checkedBag, 
+      hasNexus: input.hasNexus, 
+      isInternational: input.isInternational,
+      alreadyCheckedIn: input.alreadyCheckedIn // ADD THIS
+    },
+    { 
+      airport: input.airport, 
+      departureLocalISO: input.depISO, 
+      airline: input.airline, 
+      checkedBag: input.checkedBag, 
+      hasNexus: input.hasNexus, 
+      isInternational: input.isInternational,
+      alreadyCheckedIn: input.alreadyCheckedIn // ADD THIS
+    },
+    { 
+      airportCode: input.airport, 
+      flightDateTime: input.depISO, 
+      airline: input.airline, 
+      checkedBag: input.checkedBag, 
+      hasNexus: input.hasNexus, 
+      isInternational: input.isInternational,
+      alreadyCheckedIn: input.alreadyCheckedIn // ADD THIS
+    },
   ];
   for (const a of args) { try { const out = await mod[fnName](a); if (out) return out; } catch {} }
   return null;
@@ -158,8 +218,24 @@ export async function POST(req: Request) {
   if (!norm.airport)  return new Response(JSON.stringify({ error: "Missing airport (airport/airportCode/iata)." }), { status: 400 });
   if (!norm.depMs)    return new Response(JSON.stringify({ error: "Missing/invalid departure time (departureLocalISO/flightDateTime/departureEpochMs)." }), { status: 400 });
 
-  const existing = await callExistingCompute({ airport: norm.airport, depMs: norm.depMs, depISO: norm.depISO!, airline: norm.airline, checkedBag: norm.checkedBag, hasNexus: norm.hasNexus, isInternational: norm.isInternational });
-  const heuristic = buildPlan({ depMs: norm.depMs, checkedBag: norm.checkedBag, hasNexus: norm.hasNexus, isInternational: norm.isInternational });
+  const existing = await callExistingCompute({ 
+    airport: norm.airport, 
+    depMs: norm.depMs, 
+    depISO: norm.depISO!, 
+    airline: norm.airline, 
+    checkedBag: norm.checkedBag, 
+    hasNexus: norm.hasNexus, 
+    isInternational: norm.isInternational,
+    alreadyCheckedIn: norm.alreadyCheckedIn // ADD THIS
+  });
+  
+  const heuristic = buildPlan({ 
+    depMs: norm.depMs, 
+    checkedBag: norm.checkedBag, 
+    hasNexus: norm.hasNexus, 
+    isInternational: norm.isInternational,
+    alreadyCheckedIn: norm.alreadyCheckedIn // ADD THIS
+  });
 
   if (existing) {
     const arriveBy =
@@ -185,7 +261,10 @@ export async function POST(req: Request) {
       routeType: existing?.routeType ?? heuristic.routeType,
       components: existing?.components ?? heuristic.components,
       explanation: {
-        checkedBag: norm.checkedBag, hasNexus: norm.hasNexus, isInternational: norm.isInternational,
+        checkedBag: norm.checkedBag, 
+        hasNexus: norm.hasNexus, 
+        isInternational: norm.isInternational,
+        alreadyCheckedIn: norm.alreadyCheckedIn, // ADD THIS
         contingencyReason: heuristic.explanation.contingencyReason,
         notes: (existing?.explanation?.notes ?? []).concat(heuristic.explanation.notes)
       },

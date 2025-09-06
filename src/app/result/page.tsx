@@ -32,9 +32,113 @@ function resolveBuffers(res:any): string {
   return "Includes smart buffer & screening time";
 }
 
+// NEW: Generate comfort level variants
+function generateComfortLevels(result: any) {
+  const baseBufferMinutes = result?.bufferMinutes || 0;
+  const depISO = result?.departureLocalISO;
+  
+  if (!depISO) return null;
+  
+  const baseArrivalMs = new Date(depISO).getTime() - (baseBufferMinutes * 60_000);
+  
+  // Adjust buffer times: Risky (-15min), Moderate (baseline), Cautious (+20min)
+  const risky = new Date(baseArrivalMs + (15 * 60_000));
+  const moderate = new Date(baseArrivalMs);
+  const cautious = new Date(baseArrivalMs - (20 * 60_000));
+  
+  return {
+    risky: {
+      time: fmtClock(risky),
+      buffer: Math.max(0, baseBufferMinutes - 15),
+      description: "Minimal buffer, assumes everything goes smoothly"
+    },
+    moderate: {
+      time: fmtClock(moderate),
+      buffer: baseBufferMinutes,
+      description: "Balanced approach with reasonable safety margin"
+    },
+    cautious: {
+      time: fmtClock(cautious),
+      buffer: baseBufferMinutes + 20,
+      description: "Extra buffer for peace of mind and unexpected delays"
+    }
+  };
+}
+
+// NEW: Generate detailed analysis
+function generateAnalysis(result: any) {
+  const components = result?.components || {};
+  const traffic = result?.traffic || {};
+  const explanation = result?.explanation || {};
+  
+  // Get departure analysis data
+  const departuresInWindow = result?.meta?.departuresInWindow || result?.departuresInWindow || null;
+  const busynessPercent = result?.meta?.busynessPercent || result?.busynessPercent || null;
+  const busynessSource = result?.meta?.busynessSource || result?.source || "estimate";
+  
+  let departureContext = "";
+  if (departuresInWindow !== null && departuresInWindow > 0) {
+    departureContext = `${departuresInWindow} other flights departing within 90 minutes of yours`;
+    if (busynessPercent !== null) {
+      departureContext += ` (${busynessPercent}% of typical capacity)`;
+    }
+  } else if (busynessPercent !== null) {
+    departureContext = `Airport activity: ${busynessPercent}% of typical capacity`;
+  } else {
+    departureContext = "Based on typical patterns for this time of day";
+  }
+  
+  return {
+    departureContext,
+    busynessSource,
+    breakdown: [
+      {
+        factor: "Check-in/Bag Drop",
+        time: components.checkInMinutes || 0,
+        reason: explanation.alreadyCheckedIn && !explanation.checkedBag 
+          ? "Skipped - already checked in with carry-on only"
+          : explanation.checkedBag 
+          ? "Includes bag drop and check-in process"
+          : "Basic check-in time (carry-on only)"
+      },
+      {
+        factor: "Security Screening",
+        time: components.securityMinutes || 0,
+        reason: explanation.hasNexus 
+          ? "Expedited screening with NEXUS/PreCheck"
+          : "Regular security screening based on current conditions"
+      },
+      {
+        factor: "Walk to Gate",
+        time: components.toGateMinutes || 0,
+        reason: explanation.isInternational 
+          ? "Extra time for international terminal navigation"
+          : "Standard terminal walking time"
+      },
+      {
+        factor: "Contingency Buffer",
+        time: components.contingencyMinutes || 0,
+        reason: explanation.contingencyReason || "Buffer for unexpected delays"
+      }
+    ]
+  };
+}
+
 export default function ResultPage(){
   const sp = useSearchParams();
   const [showRaw, setShowRaw] = useState(false);
+  const [copiedTime, setCopiedTime] = useState<string | null>(null);
+
+  // Copy to clipboard function
+  const copyToClipboard = async (time: string) => {
+    try {
+      await navigator.clipboard.writeText(time);
+      setCopiedTime(time);
+      setTimeout(() => setCopiedTime(null), 2000); // Clear after 2 seconds
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
 
   const result = useMemo(()=>{
     const raw = sp.get("data");
@@ -46,6 +150,10 @@ export default function ResultPage(){
   const arriveBy = useMemo(()=> result ? resolveArriveBy(result) : null, [result]);
   const security = useMemo(()=> result ? resolveSecurity(result) : "—");
   const buffers  = useMemo(()=> result ? resolveBuffers(result) : "—");
+  
+  // NEW: Generate comfort levels and analysis
+  const comfortLevels = useMemo(() => result ? generateComfortLevels(result) : null, [result]);
+  const analysis = useMemo(() => result ? generateAnalysis(result) : null, [result]);
 
   const components  = result?.components || {};
   const explanation = result?.explanation || {};
@@ -64,7 +172,7 @@ export default function ResultPage(){
           <div className="card card-lg">
             <div className="card-inner" style={{textAlign:"center"}}>
               <h1>No result found</h1>
-              <p className="sub">Let’s try that again.</p>
+              <p className="sub">Let's try that again.</p>
               <div className="footer-row" style={{justifyContent:"center"}}>
                 <Link className="btn" href="/">Start over</Link>
               </div>
@@ -120,6 +228,94 @@ export default function ResultPage(){
               </div>
             </div>
           </section>
+
+          {/* NEW: Comfort Level Cards */}
+          {comfortLevels && (
+            <section className="grid grid-3">
+              <div className="card">
+                <div className="card-inner">
+                  <div className="kicker" style={{color: "#ff6b6b"}}>Risky</div>
+                  <div className="time-big" style={{fontSize: "32px"}}>{comfortLevels.risky.time}</div>
+                  <p className="help" style={{marginTop: 4}}>{comfortLevels.risky.buffer} min buffer</p>
+                  <p className="help" style={{fontSize: "12px", marginTop: 8}}>{comfortLevels.risky.description}</p>
+                </div>
+              </div>
+              <div className="card" style={{border: "2px solid var(--accent)"}}>
+                <div className="card-inner">
+                  <div className="kicker" style={{color: "var(--accent)"}}>Moderate</div>
+                  <div className="time-big" style={{fontSize: "32px"}}>{comfortLevels.moderate.time}</div>
+                  <p className="help" style={{marginTop: 4}}>{comfortLevels.moderate.buffer} min buffer</p>
+                  <p className="help" style={{fontSize: "12px", marginTop: 8}}>{comfortLevels.moderate.description}</p>
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-inner">
+                  <div className="kicker" style={{color: "#51cf66"}}>Cautious</div>
+                  <div className="time-big" style={{fontSize: "32px"}}>{comfortLevels.cautious.time}</div>
+                  <p className="help" style={{marginTop: 4}}>{comfortLevels.cautious.buffer} min buffer</p>
+                  <p className="help" style={{fontSize: "12px", marginTop: 8}}>{comfortLevels.cautious.description}</p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* NEW: Enhanced Detailed Analysis Section */}
+          {analysis && (
+            <section className="card">
+              <div className="card-inner">
+                <div className="kicker">Detailed Analysis</div>
+                <h3 style={{margin:"6px 0 16px", fontSize:"18px"}}>Why This Timing</h3>
+                
+                {/* Airport Activity Summary */}
+                <div style={{
+                  background: "rgba(110,231,255,0.1)", 
+                  border: "1px solid rgba(110,231,255,0.2)", 
+                  borderRadius: "12px", 
+                  padding: "16px",
+                  marginBottom: "16px"
+                }}>
+                  <div className="row" style={{justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px"}}>
+                    <div>
+                      <div style={{color: "var(--accent)", fontWeight: 600, fontSize: "14px"}}>Airport Activity</div>
+                      <div style={{color: "var(--text)", fontWeight: 700, fontSize: "16px"}}>{analysis.activityLevel}</div>
+                    </div>
+                    {analysis.departuresInWindow !== null && (
+                      <div style={{textAlign: "right"}}>
+                        <div style={{color: "var(--accent)", fontWeight: 600, fontSize: "24px"}}>{analysis.departuresInWindow}</div>
+                        <div style={{color: "var(--muted)", fontSize: "12px"}}>flights in 90min</div>
+                      </div>
+                    )}
+                  </div>
+                  <p className="help" style={{marginBottom: analysis.extendedContext ? "8px" : "0"}} suppressHydrationWarning>
+                    {analysis.departureContext}
+                  </p>
+                  {analysis.extendedContext && (
+                    <p className="help" style={{fontSize: "12px", color: "var(--accent)", margin: 0}} suppressHydrationWarning>
+                      {analysis.extendedContext}
+                    </p>
+                  )}
+                </div>
+                
+                {/* Time Breakdown */}
+                <div className="grid grid-2" style={{gap: "12px"}}>
+                  {analysis.breakdown.map((item, i) => (
+                    <div key={i} style={{
+                      background: "rgba(255,255,255,0.04)", 
+                      border: "1px solid rgba(255,255,255,0.08)", 
+                      borderRadius: "12px", 
+                      padding: "14px"
+                    }}>
+                      <div className="row" style={{justifyContent: "space-between", marginBottom: "6px"}}>
+                        <span style={{fontWeight: 600, fontSize: "14px"}}>{item.factor}</span>
+                        <span style={{color: "var(--accent)", fontWeight: 600}}>{item.time} min</span>
+                      </div>
+                      <p className="help" style={{fontSize: "12px", margin: 0}}>{item.reason}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
 
           <section className="grid grid-2">
             <div className="card">
