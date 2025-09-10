@@ -18,7 +18,7 @@ function fmtTimeISOStable(iso?: string | null, timeZone?: string) {
   if (timeZone) (opts as any).timeZone = timeZone;
 
   const parts = new Intl.DateTimeFormat("en-US", opts).formatToParts(d);
-  const get = (t: any) => parts.find(p => p.type === t)?.value ?? "\u2014";
+  const get = (t: any) => parts.find(p => p.type === t)?.value ?? "";
 
   const hour = String(get("hour")).padStart(2, "0");
   const minute = String(get("minute")).padStart(2, "0");
@@ -32,7 +32,7 @@ function parseDataParam(param: string | null) {
 
   const tryJSON = (s: string) => { try { return JSON.parse(s); } catch { return null; } };
 
-  // Try Base64URL -> JSON
+  // Try Base64URL ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ JSON
   try {
     const b64 = param.replace(/-/g, '+').replace(/_/g, '/');
     const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
@@ -43,7 +43,7 @@ function parseDataParam(param: string | null) {
     if (o) return o;
   } catch {}
 
-  // Try URI decoding once/twice -> JSON
+  // Try URI decoding once/twice ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ JSON
   try {
     const once = decodeURIComponent(param);
     const o1 = tryJSON(once);
@@ -76,7 +76,7 @@ function generateAnalysis(result: any) {
 
   const items = [
     { factor: "Check-in / bag-drop", time: n(bd.checkInMin, 30), reason: "Airline counters & baggage drop at this hour." },
-    { factor: "Security screening",  time: n(bd.securityWaitMin, 5), reason: (result?.meta?.securityDetail ?? "\u2014") },
+    { factor: "Security screening",  time: n(bd.securityWaitMin, 5), reason: (result?.meta?.securityDetail ?? "Typical security wait for this timeslot.") },
     { factor: "Walk to gate",        time: n(bd.walkBufferMin, 12), reason: "Distance and terminal layout." },
     { factor: "Contingency",         time: n(bd.contingencyMin ?? result?.meta?.airportMiscBufferMin, 8), reason: "Buffer for minor slowdowns." }
   ];
@@ -93,7 +93,7 @@ function generateAnalysis(result: any) {
     activityLevel: activityLevel,
     departuresInWindow: count,
     windowMinutes: windowMinutes,
-    departureContext: (result?.meta?.securityDetail ?? "\u2014"),
+    departureContext: (result?.meta?.securityDetail ?? "Based on schedule load and typical patterns."),
     extendedContext: (result?.meta?.securitySource ? ("Source: " + result.meta.securitySource) : null),
     breakdown: items
   };
@@ -159,7 +159,7 @@ export default function ResultPage() {
       const level = score >= 60 ? "Heavy" : (score >= 30 ? "Moderate" : (score > 0 ? "Light" : "Typical"));
       const count = (typeof bus?.count === "number") ? bus.count : null;
       const windowMin = (typeof bus?.windowMin === "number") ? bus.windowMin : Math.round(((result?.meta?.horizonHours ?? 1.5) * 60));
-      traffic = { level, reason: `${score}% \u00B7 ${count ?? "\u2014"} deps in \u00B1${windowMin}m` };
+      traffic = { level, reason: `${score}% \u00B7 ${count ?? "?"} deps in \u00B1${windowMin}m` };
     }
   }
   const routeType  = result?.routeType || (result?.explanation?.isInternational ? "International" : "Domestic");
@@ -178,7 +178,7 @@ export default function ResultPage() {
         <div className="container">
           <div className="card card-lg">
             <div className="card-inner" style={{ textAlign: "center" }}>
-              <h1 suppressHydrationWarning data-hero-title>{fmtTimeISOStable(headerISO) ?? "\u2014"}</h1>
+              <h1 suppressHydrationWarning data-hero-title>{fmtTimeISOStable(headerISO) ?? "See details"}</h1>
               <p className="sub">Let&apos;s try that again.</p>
               <div className="footer-row" style={{ justifyContent: "center" }}>
                 <Link className="btn" href="/">Start over</Link>
@@ -215,12 +215,12 @@ export default function ResultPage() {
               {(result?.airport || result?.departureLocalISO) && (
                 <div className="help" style={{ marginTop: 4 }} suppressHydrationWarning>
                   {result?.airport}
-                  {result?.airport && result?.departureLocalISO ? " \u00B7 " : ""}
+                  {result?.airport && result?.departureLocalISO ? " \u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u00A0\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00E2\u20AC\u00A6\u00C3\u201A\u00C2\u00A1\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u20AC\u0161\u00C2\u00AC\u00C3\u2026\u00C2\u00A1\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00B7 " : ""}
                   {fmtDateTimeISO(result?.departureLocalISO)}
                 </div>
               )}
 
-              <div className="time-big" suppressHydrationWarning>{fmtTimeISOStable(heroISO) ?? "\u2014"}</div>
+              <div className="time-big" suppressHydrationWarning>{fmtTimeISOStable(heroISO) ?? "See details"}</div>
               <p className="help" style={{ marginTop: 8 }} suppressHydrationWarning>{buffers}</p>
 
               <div className="row" style={{ justifyContent: "space-between", marginTop: 8, flexWrap: "wrap" }}>
@@ -336,15 +336,15 @@ export default function ResultPage() {
               <div className="card-inner">
                 <div className="kicker">Your flight</div>
                 <h3 style={{ margin: "6px 0 10px", fontSize: "18px" }}>Departure</h3>
-                <p className="help" suppressHydrationWarning>{traffic?.reason ?? "\u2014"}</p>
+                <p className="help" suppressHydrationWarning>{traffic?.reason ?? "Based on typical patterns at this hour."}</p>
 
                 <div className="divider"></div>
                 <div className="kicker">Why this time</div>
                 <ul style={{ margin: "10px 0", paddingLeft: "18px", color: "var(--muted)" }}>
-                  <li>Check-in / bag-drop: <strong suppressHydrationWarning>{analysis.breakdown[0]?.time ?? "\u2014"} min</strong></li>
-                  <li>Security screening:  <strong suppressHydrationWarning>{analysis.breakdown[1]?.time ?? "\u2014"} min</strong></li>
-                  <li>Walk to gate:        <strong suppressHydrationWarning>{analysis.breakdown[2]?.time ?? "\u2014"} min</strong></li>
-                  <li>Contingency:         <strong suppressHydrationWarning>{analysis.breakdown[3]?.time ?? "\u2014"} min</strong></li>
+                  <li>Check-in / bag-drop: <strong suppressHydrationWarning>{analysis.breakdown[0]?.time ?? "\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u00A0\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00E2\u20AC\u00A6\u00C3\u201A\u00C2\u00A1\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u20AC\u0161\u00C2\u00AC\u00C3\u2026\u00C2\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u009D"} min</strong></li>
+                  <li>Security screening:  <strong suppressHydrationWarning>{analysis.breakdown[1]?.time ?? "\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u00A0\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00E2\u20AC\u00A6\u00C3\u201A\u00C2\u00A1\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u20AC\u0161\u00C2\u00AC\u00C3\u2026\u00C2\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u009D"} min</strong></li>
+                  <li>Walk to gate:        <strong suppressHydrationWarning>{analysis.breakdown[2]?.time ?? "\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u00A0\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00E2\u20AC\u00A6\u00C3\u201A\u00C2\u00A1\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u20AC\u0161\u00C2\u00AC\u00C3\u2026\u00C2\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u009D"} min</strong></li>
+                  <li>Contingency:         <strong suppressHydrationWarning>{analysis.breakdown[3]?.time ?? "\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u00A0\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00E2\u20AC\u00A6\u00C3\u201A\u00C2\u00A1\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u20AC\u0161\u00C2\u00AC\u00C3\u2026\u00C2\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u009D"} min</strong></li>
                 </ul>
                 {result?.explanation?.contingencyReason && (
                   <p className="help" style={{ marginTop: -6 }} suppressHydrationWarning>
@@ -366,11 +366,11 @@ export default function ResultPage() {
               <div className="card-inner">
                 <div className="kicker">Security & traffic</div>
                 <h3 style={{ margin: "6px 0 10px", fontSize: "18px" }}>
-                  <span suppressHydrationWarning>{result?.security ?? "\u2014"}</span>
+                  <span suppressHydrationWarning>{result?.security ?? "Security"}</span>
                   <span style={{ opacity: .5 }}>{" \u00B7 "}</span>
-                  <span suppressHydrationWarning>Terminal traffic: {traffic?.level ?? "\u2014"}</span>
+                  <span suppressHydrationWarning>Terminal traffic: {traffic?.level ?? "\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u00A0\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00E2\u20AC\u00A6\u00C3\u201A\u00C2\u00A1\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u20AC\u0161\u00C2\u00AC\u00C3\u2026\u00C2\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u009D"}</span>
                 </h3>
-                <p className="help" suppressHydrationWarning>{traffic?.reason ?? "\u2014"}</p>
+                <p className="help" suppressHydrationWarning>{traffic?.reason ?? "Based on typical patterns at this hour."}</p>
 
                 <div className="divider"></div>
                 <div className="kicker">Timeline</div>

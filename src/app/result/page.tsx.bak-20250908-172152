@@ -1,0 +1,581 @@
+﻿'use client';
+
+import "../ui.css";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import {useMemo, useState, useEffect} from 'react';
+
+function pad2(n:number){ return n < 10 ? "0"+n : ""+n; }
+function monthAbbr(m:number){ return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m]||""; }
+function fmtClock(d: Date){ let h=d.getHours(); const m=pad2(d.getMinutes()); const am=h>=12?"PM":"AM"; h=h%12||12; return `${h}:${m} ${am}`; }
+function fmtTimeISO(iso?: string|null){ if(!iso) return "—"; return fmtClock(new Date(iso)); }
+function fmtDateTimeISO(iso?: string|null){ if(!iso) return "—"; const d=new Date(iso); return `${monthAbbr(d.getMonth())} ${d.getDate()}, ${d.getFullYear()}, ${fmtClock(d)}`; }
+function decodeB64(b64: string){ try { return JSON.parse(decodeURIComponent(escape(atob(b64)))); } catch { return null; } }
+
+function resolveArriveBy(res:any): string | null {
+  const cands = [res?.arriveBy, res?.arrivalTime, res?.result?.arriveBy, res?.recommendation?.arriveBy, res?.arrival?.recommendedTime, res?.data?.arriveBy, res?.recommend?.arriveBy].filter(Boolean);
+  if(cands.length && typeof cands[0] === "string") return cands[0] as string;
+  const m = res?.bufferMinutes ?? res?.arriveByMinutes ?? res?.minutesBeforeDeparture;
+  const depISO = res?.departureLocalISO ?? res?.departure ?? res?.flightDateTime;
+  if(typeof m === "number" && depISO){ try { const t = new Date(new Date(depISO).getTime() - (m * 60_000)); return fmtClock(t); } catch {} }
+  return null;
+
+function resolveSecurity(res:any): string {
+  const c = res?.securityOutlook || res?.security?.status || res?.queue || res?.wait || res?.congestion;
+  if(typeof c === "string") return c;
+  if(typeof c === "number") return c + " min est. wait";
+  return "Typical";
+
+function resolveBuffers(res:any): string {
+  if(typeof res?.bufferMinutes === "number") return res.bufferMinutes + " min buffer";
+  if(typeof res?.minutesBeforeDeparture === "number") return res.minutesBeforeDeparture + " min before departure";
+  return "Includes smart buffer & screening time";
+
+// NEW: Generate comfort level variants
+function generateComfortLevels(result: any) {
+  const baseBufferMinutes = result?.bufferMinutes || 0;
+  const depISO = result?.departureLocalISO;
+  
+  if (!depISO) return null;
+  
+  const baseArrivalMs = new Date(depISO).getTime() - (baseBufferMinutes * 60_000);
+  
+  // Adjust buffer times: Risky (-15min), Moderate (baseline), Cautious (+20min)
+  const risky = new Date(baseArrivalMs + (15 * 60_000));
+  const moderate = new Date(baseArrivalMs);
+  const cautious = new Date(baseArrivalMs - (20 * 60_000));
+  
+  return {
+    risky: {
+      time: fmtClock(risky),
+      buffer: Math.max(0, baseBufferMinutes - 15),
+      description: "Minimal buffer, assumes everything goes smoothly"
+    },
+    moderate: {
+      time: fmtClock(moderate),
+      buffer: baseBufferMinutes,
+      description: "Balanced approach with reasonable safety margin"
+    },
+    cautious: {
+      time: fmtClock(cautious),
+      buffer: baseBufferMinutes + 20,
+      description: "Extra buffer for peace of mind and unexpected delays"
+
+  };
+
+// NEW: Generate detailed analysis
+function generateAnalysis(result: any) {
+  const meta: any = result?.meta ?? {};
+  const busy: any = meta.busyness ?? {};
+  const components: any = result?.components ?? {};
+  const explain: any = result?.explanation ?? {};
+
+  const num = (v: any) => (typeof v === "number" && isFinite(v) ? v : null);
+
+  // === Departures-in-window & window ===
+  const windowMinutes =
+    num(busy.windowMin) ??
+    (num(meta.horizonHours) != null ? Math.round((meta.horizonHours as number) * 60) : 90);
+
+  const departuresInWindow = num(meta.departuresInWindow) ?? num(busy.count);
+  const busynessPercent = num(meta.busynessPercent) ?? (typeof busy.score === "number" ? Math.round(busy.score) : null);
+  const busynessSource = (meta.busynessSource ?? busy.source ?? "estimate") as string;
+
+  let departureContext = "";
+  if (departuresInWindow != null && departuresInWindow >= 0) {
+    departureContext = `${departuresInWindow} other flights departing within ±${windowMinutes} minutes of yours`;
+    if (busynessPercent != null) departureContext += ` (${busynessPercent}% of typical capacity)`;
+  } else if (busynessPercent != null) {
+    departureContext = `Airport activity: ${busynessPercent}% of typical capacity`;
+  } else {
+    departureContext = "{depInfo?.text}";
+
+  // === Minutes breakdown (same mapping as the working ZIP) ===
+  const checkinMin =
+    (explain?.alreadyCheckedIn && !explain?.checkedBag)
+      ? 0
+      : (num(components.checkInMinutes) ??
+         num(components.bagScenarioMin) ??
+         num(meta.bagDropMinutes) ??
+         num(meta.bagDropMin) ?? 20);
+
+  const securityMin =
+    num(meta.securityWaitMin) ??
+    num(meta.securityDetail?.minutes) ??
+    num(components.securityMinutes) ??
+    num(meta.securityMinutes) ?? 0;
+
+  const walkMin =
+    num(meta.walkBufferMin) ??
+    num(meta.walkMinutes) ??
+    num(components.toGateMinutes) ?? 12;
+
+  const bufferMin =
+    num(meta.airportMiscBufferMin) ??
+    num(meta.arrivalBufferMin) ??
+    num(meta.bufferMinutes) ??
+    num(components.contingencyMinutes) ?? 20;
+
+  const breakdown = [
+    { factor: "Check-in/Bag Drop",    time: checkinMin,
+      reason: (explain?.alreadyCheckedIn && !explain?.checkedBag)
+        ? "Skipped - already checked in with carry-on only"
+        : (explain?.checkedBag ? "Includes bag drop and check-in process" : "Basic check-in time (carry-on only)") },
+    { factor: "Security Screening",   time: securityMin,
+      reason: explain?.hasNexus ? "Expedited screening with NEXUS/PreCheck" : "Regular security screening based on current conditions" },
+    { factor: "Walk to Gate",         time: walkMin,   reason: "Standard terminal walking time" },
+    { factor: "Contingency Buffer",   time: bufferMin, reason: "Buffer for unexpected delays" }
+  ];
+
+  // === Timeline (ISO) + preformatted text ===
+  const depISO: string | undefined =
+    (result?.departureLocalISO ?? result?.departure ?? result?.flightDateTime) as any;
+  const depMs = depISO ? new Date(depISO).getTime() : NaN;
+
+  const sumMin = (checkinMin ?? 0) + (securityMin ?? 0) + (walkMin ?? 0) + (bufferMin ?? 0);
+  const arriveMs = isFinite(depMs) ? (depMs - sumMin * 60000) : NaN;
+
+  const toISO = (ms: number) => (isFinite(ms) ? new Date(ms).toISOString() : undefined);
+  const timeline = {
+    arrive:       toISO(arriveMs),
+    checkinDone:  toISO(arriveMs + (checkinMin ?? 0) * 60000),
+    securityDone: toISO(arriveMs + ((checkinMin ?? 0) + (securityMin ?? 0)) * 60000),
+    atGateBy:     toISO(arriveMs + ((checkinMin ?? 0) + (securityMin ?? 0) + (walkMin ?? 0)) * 60000),
+  };
+
+  const fmt = (iso?: string) => {
+    try {
+      return iso
+        ? (typeof fmtTime === "function" ? fmtTime(iso) : new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))
+        : undefined;
+    } catch { return undefined; }
+  };
+  const timelineText = {
+    arrive: fmt(timeline.arrive),
+    checkinDone: fmt(timeline.checkinDone),
+    securityDone: fmt(timeline.securityDone),
+    atGateBy: fmt(timeline.atGateBy),
+  };
+
+  return {
+    departuresInWindow,
+    windowMinutes,
+    departureContext,
+    busynessSource,
+    breakdown,
+    timeline,
+    timelineText,
+  };
+}/** Compute departures-in-window text for Airport Activity */
+function getDepartureContext(result: any) {
+  const meta: any = (result as any)?.meta ?? {};
+  const busy: any = meta.busyness ?? {};
+  const windowMinutes =
+    typeof busy?.windowMin === "number"
+      ? busy.windowMin
+      : (typeof meta?.horizonHours === "number" ? Math.round(meta.horizonHours * 60) : 90);
+
+  const count =
+    typeof busy?.count === "number"
+      ? busy.count
+      : (typeof meta?.departuresInWindow === "number" ? meta.departuresInWindow : null);
+
+  const percent =
+    typeof meta?.busynessPercent === "number"
+      ? meta.busynessPercent
+      : (typeof busy?.score === "number" ? Math.round(busy.score) : null);
+
+  let text = "{depInfo?.text}";
+  if (count !== null && count >= 0) {
+    text = `${count} other flights departing within ±${windowMinutes} minutes of yours` +
+           (percent != null ? ` (${percent}% of typical capacity)` : "");
+
+  return { count, windowMinutes, percent, text };
+
+export default function ResultPage(){
+const sp = useSearchParams();
+  const [showRaw, setShowRaw] = useState(false);
+  const [copiedTime, setCopiedTime] = useState<string | null>(null);
+
+  // Copy to clipboard function
+  const copyToClipboard = async (time: string) => {
+    try {
+      await navigator.clipboard.writeText(time);
+      setCopiedTime(time);
+      setTimeout(() => setCopiedTime(null), 2000); // Clear after 2 seconds
+    } catch (err) {
+      console.error('Failed to copy:', err);
+
+  };
+
+  const result = useMemo(()=>{
+    const raw = sp.get("data");
+    let obj = raw ? decodeB64(raw) : null;
+    if(!obj){ try { obj = JSON.parse(sessionStorage.getItem("depart:lastResult") || "null"); } catch {} }
+    return obj;
+  }, [sp]);
+
+  const arriveBy = useMemo(()=> result ? resolveArriveBy(result) : null, [result]);
+  const security = useMemo(()=> result ? resolveSecurity(result) : "—");
+  const buffers  = useMemo(()=> result ? resolveBuffers(result) : "—");
+  
+  // NEW: Generate comfort levels and analysis
+  const comfortLevels = useMemo(() => result ? generateComfortLevels(result) : null, [result]);
+  const analysis = useMemo(() => result ? generateAnalysis(result) : null, [result]);
+
+    const depInfo = useMemo(() => getDepartureContext(result), [result]);
+const components  = result?.components || {};
+  const explanation = result?.explanation || {};
+const bandISOs = useMemo(() => {
+  const r: any = result || {};
+  return {
+    risky:    r?.bands?.aggressiveArriveLocalISO ?? null,   // later (0 buffer)
+    moderate: r?.bands?.moderateArriveLocalISO
+           ?? r?.bands?.targetArriveLocalISO
+           ?? r?.bands?.normalArriveLocalISO
+           ?? null,                                          // baseline
+    cautious: r?.bands?.cautiousArriveLocalISO ?? null       // earlier (+buffer)
+  };
+}, [result]);
+
+const riskyISO    = bandISOs.risky;
+const moderateISO = bandISOs.moderate;
+const cautiousISO = bandISOs.cautious;
+
+
+function bufferTextFor(iso?: string | null) {
+  if (typeof iso !== "string" || typeof moderateISO !== "string") return "0 min buffer";
+  const ms = new Date(moderateISO).getTime() - new Date(iso).getTime();
+  const diffMin = Math.round(ms / 60000);
+  if (diffMin > 0) return diffMin + " min buffer";           // earlier than moderate
+  if (diffMin < 0) return "later by " + Math.abs(diffMin) + " min"; // later than moderate
+  return "0 min buffer";
+
+  return `${mins} min buffer`;
+
+const heroISO = useMemo(() => {
+  const r: any = result || {};
+  const cands = [
+    r?.bands?.suggestedArriveLocalISO,
+    r?.bands?.targetArriveLocalISO,
+    r?.bands?.normalArriveLocalISO,
+    r?.bands?.moderateArriveLocalISO,
+    r?.bands?.standardArriveLocalISO,
+    r?.bands?.defaultArriveLocalISO,
+    r?.bands?.cautiousArriveLocalISO,
+    r?.bands?.aggressiveArriveLocalISO,
+    r?.arriveAirportLocalISO,
+    r?.arrivalLocalISO,
+    (typeof r?.arriveBy === "string" ? r?.arriveBy : null),
+    (typeof r?.arrivalTime === "string" ? r?.arrivalTime : null)
+  ].filter((v:any) => !!v) as string[];
+  return cands.length ? cands[0] : null;
+}, [result]);
+const headerISO = useMemo(() => {
+  const r: any = result || {};
+  const cands = [
+    r?.bands?.suggestedArriveLocalISO,
+    r?.bands?.targetArriveLocalISO,
+    r?.bands?.normalArriveLocalISO,
+    r?.bands?.moderateArriveLocalISO,
+    r?.bands?.standardArriveLocalISO,
+    r?.bands?.defaultArriveLocalISO,
+    r?.bands?.cautiousArriveLocalISO,
+    r?.bands?.aggressiveArriveLocalISO,
+    r?.arriveAirportLocalISO,
+    r?.arrivalLocalISO
+  ].filter((v:any) => !!v);
+  return cands.length ? (cands[0] as string) : null;
+}, [result]);
+
+;
+function setHeroTitleFromHeaderISO(hISO?: string | null) {
+  try {
+    const el = document.querySelector<HTMLElement>("[data-hero-title]");
+    if (!el) return;
+    const value = (typeof hISO === "string" && hISO) ? (fmtTimeISO(hISO) ?? "See details") : "See details";
+    el.textContent = value;
+  } catch {}
+
+useEffect(() => { setHeroTitleFromHeaderISO(headerISO); }, [headerISO]);
+const timeline = (() => {
+  try {
+    const res: any = result || {};
+    const depISO: string | null = res?.departureLocalISO || null;
+    const bd: any = res?.breakdown || {};
+    const meta: any = res?.meta || {};
+    const components: any = res?.components || {};
+    const explain: any = res?.explanation || {};
+
+    const N = (v: any) =>
+      (typeof v === "number" && isFinite(v)) ? v :
+      ((typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) ? Number(v) : undefined);
+
+    const add = (iso?: string|null, m?: number) =>
+      (iso && typeof m === "number") ? new Date(new Date(iso).getTime() + m*60000).toISOString() : null;
+    const sub = (iso?: string|null, m?: number) =>
+      (iso && typeof m === "number") ? new Date(new Date(iso).getTime() - m*60000).toISOString() : null;
+
+    const checkinMin =
+      (explain?.alreadyCheckedIn && !explain?.checkedBag) ? 0 :
+      (N(components.checkInMinutes) ??
+       N(components.bagScenarioMin) ??
+       N(meta.bagDropMinutes) ??
+       N(meta.bagDropMin) ??
+       N(bd.bagDropProcessMin) ?? 20);
+
+    const securityMin = N(meta.securityWaitMin) ??
+                        N(meta.securityDetail?.minutes) ??
+                        N(components.securityMinutes) ??
+                        N(bd.securityWaitMin) ?? 0;
+
+    const walkMin     = N(bd.walkBufferMin) ?? 12;
+    const miscMin     = N(bd.airportMiscBufferMin) ?? 8;
+    const gateLeadMin = N(bd.gateCloseLeadMin) ?? 20;
+
+    const arriveByISO =
+      res?.arriveAirportLocalISO ??
+      res?.bands?.targetArriveLocalISO ??
+      (depISO ? sub(depISO, (gateLeadMin||0)+(walkMin||0)+(miscMin||0)+(securityMin||0)+(checkinMin||0)) : null);
+
+    const checkInDoneISO   = add(arriveByISO, checkinMin);
+    const securityDoneISO  = add(checkInDoneISO, securityMin);
+    const gateArrivalISO   = securityDoneISO
+      ? add(securityDoneISO, (walkMin||0)+(miscMin||0))
+      : (depISO ? sub(depISO, gateLeadMin) : null);
+
+    const departureISO = depISO || res?.timeline?.departureISO || null;
+    return { arriveByISO, checkInDoneISO, securityDoneISO, gateArrivalISO, atGateByISO: gateArrivalISO, atGateByISO: gateArrivalISO, atGateByISO: gateArrivalISO, atGateByISO: gateArrivalISO, atGateByISO: gateArrivalISO, departureISO, ...(res?.timeline || {}) };
+  } catch {
+    return (result as any)?.timeline || {};
+
+})();
+  const traffic     = result?.traffic || {};
+  const routeType   = result?.routeType || (explanation?.isInternational ? "International" : "Domestic");
+  const overall     = result?.overall || null;
+  const confidence  = result?.confidence || null;
+  const changed     = result?.changed || null;
+  const depISO      = result?.departureLocalISO;
+
+  if(!result){
+    return (
+      <main className="app-shell">
+        <div className="container">
+          <div className="card card-lg">
+            <div className="card-inner" style={{textAlign:"center"}}>
+              <h1 suppressHydrationWarning data-hero-title>{fmtTimeISO(headerISO) ?? "See details"}</h1>
+              <p className="sub">Let's try that again.</p>
+              <div className="footer-row" style={{justifyContent:"center"}}>
+                <Link className="btn" href="/">Start over</Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+
+  return (
+    <main className="app-shell">
+      <div className="container">
+
+        <div className="header">
+          <div className="brand">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M3 12h18M3 12c6-4 12-4 18 0M3 12c6 4 12 4 18 0" stroke="url(#g)" strokeWidth="1.6" strokeLinecap="round"/>
+              <defs>
+                <linearGradient id="g" x1="3" y1="12" x2="21" y2="12" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#6ee7ff"/><stop offset="1" stopColor="#a78bfa"/>
+                </linearGradient>
+              </defs>
+            </svg>
+            <div>depart</div>
+          </div>
+          <div className="badge">results</div>
+        </div>
+
+        <div className="grid">
+          <section className="card card-lg">
+            <div className="card-inner">
+              <div className="kicker">Suggested arrival</div>
+              {(result?.airport || result?.departureLocalISO) && (
+                <div className="help" style={{marginTop:4}} suppressHydrationWarning>
+                  {result?.airport}{result?.airport && result?.departureLocalISO ? " · " : ""}{fmtDateTimeISO(result?.departureLocalISO)}
+                </div>
+              )}
+              <div className="time-big" suppressHydrationWarning>{fmtTimeISO(heroISO) ?? "See details"}</div>
+              <p className="help" style={{marginTop:8}} suppressHydrationWarning>{buffers}</p>
+
+              <div className="row" style={{justifyContent:"space-between", marginTop:8, flexWrap:"wrap"}}>
+                <div className="row" style={{gap:8}}>
+                  {overall && <div className="chip" suppressHydrationWarning>Overall: <strong>{overall}</strong></div>}
+                  {confidence?.level && <div className="chip" suppressHydrationWarning>Confidence: <strong>{confidence.level}</strong></div>}
+                  <div className="chip" suppressHydrationWarning>{routeType} flight</div>
+                </div>
+                {changed?.minutes ? (
+                  <div className={"chip " + (changed.direction==='later' ? 'bad' : 'good')} suppressHydrationWarning>
+                    {changed.direction==='later' ? 'Later by' : 'Earlier by'} {changed.minutes} min
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="footer-row">
+                <button className="btn btn-secondary" onClick={()=> setShowRaw(v=>!v)}>{showRaw ? "Hide raw output" : "View raw output"}</button>
+                <Link className="btn" href="/">Plan another flight</Link>
+              </div>
+            </div>
+          </section>
+
+          {/* NEW: Comfort Level Cards */}
+          {comfortLevels && (
+            <section className="grid grid-3">
+              <div className="card">
+                <div className="card-inner">
+                  <div className="kicker" style={{color: "#ff6b6b"}}>Risky</div>
+                  <div className="time-big" style={{fontSize: "32px"}}>{comfortLevels.risky.time}</div>
+                  <p className="help" style={{marginTop: 4}} suppressHydrationWarning>{bufferTextFor(riskyISO)}</p>
+                  <p className="help" style={{fontSize: "12px", marginTop: 8}}>{comfortLevels.risky.description}</p>
+                </div>
+              </div>
+              <div className="card" style={{border: "2px solid var(--accent)"}}>
+                <div className="card-inner">
+                  <div className="kicker" style={{color: "var(--accent)"}}>Moderate</div>
+                  <div className="time-big" style={{fontSize: "32px"}}>{comfortLevels.moderate.time}</div>
+                  <p className="help" style={{marginTop: 4}} suppressHydrationWarning>{bufferTextFor(moderateISO)}</p>
+                  <p className="help" style={{fontSize: "12px", marginTop: 8}}>{comfortLevels.moderate.description}</p>
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-inner">
+                  <div className="kicker" style={{color: "#51cf66"}}>Cautious</div>
+                  <div className="time-big" style={{fontSize: "32px"}}>{comfortLevels.cautious.time}</div>
+                  <p className="help" style={{marginTop: 4}} suppressHydrationWarning>{bufferTextFor(cautiousISO)}</p>
+                  <p className="help" style={{fontSize: "12px", marginTop: 8}}>{comfortLevels.cautious.description}</p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* NEW: Enhanced Detailed Analysis Section */}
+          {analysis && (
+            <section className="card">
+              <div className="card-inner">
+                <div className="kicker">Detailed Analysis</div>
+                <h3 style={{margin:"6px 0 16px", fontSize:"18px"}}>Why This Timing</h3>
+                
+                {/* Airport Activity Summary */}
+                <div style={{
+                  background: "rgba(110,231,255,0.1)", 
+                  border: "1px solid rgba(110,231,255,0.2)", 
+                  borderRadius: "12px", 
+                  padding: "16px",
+                  marginBottom: "16px"
+                }}>
+                  <div className="row" style={{justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px"}}>
+                    <div>
+                      <div style={{color: "var(--accent)", fontWeight: 600, fontSize: "14px"}}>Airport Activity</div>
+                      <div style={{color: "var(--text)", fontWeight: 700, fontSize: "16px"}}>{analysis.activityLevel}</div>
+                    </div>
+                    {analysis.departuresInWindow !== null && (
+                      <div style={{textAlign: "right"}}>
+                        <div style={{color: "var(--accent)", fontWeight: 600, fontSize: "24px"}}>{analysis.departuresInWindow}</div>
+                        <div style={{color: "var(--muted)", fontSize: "12px"}}>flights in ±{analysis?.windowMinutes ?? Math.round(((result?.meta?.horizonHours ?? 1.5) * 60))} min</div>
+                      </div>
+                    )}
+                  </div>
+                  <p className="help" style={{marginBottom: analysis.extendedContext ? "8px" : "0"}} suppressHydrationWarning>
+                    {analysis.departureContext}
+                  </p>
+                  {analysis.extendedContext && (
+                    <p className="help" style={{fontSize: "12px", color: "var(--accent)", margin: 0}} suppressHydrationWarning>
+                      {analysis.extendedContext}
+                    </p>
+                  )}
+                </div>
+                
+                {/* Time Breakdown */}
+                <div className="grid grid-2" style={{gap: "12px"}}>
+                  {analysis.breakdown.map((item, i) => (
+                    <div key={i} style={{
+                      background: "rgba(255,255,255,0.04)", 
+                      border: "1px solid rgba(255,255,255,0.08)", 
+                      borderRadius: "12px", 
+                      padding: "14px"
+                    }}>
+                      <div className="row" style={{justifyContent: "space-between", marginBottom: "6px"}}>
+                        <span style={{fontWeight: 600, fontSize: "14px"}}>{item.factor}</span>
+                        <span style={{color: "var(--accent)", fontWeight: 600}}>{item.time} min</span>
+                      </div>
+                      <p className="help" style={{fontSize: "12px", margin: 0}}>{item.reason}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          <section className="grid grid-2">
+            <div className="card">
+              <div className="card-inner">
+                <div className="kicker">Your flight</div>
+                <h3 style={{margin:"6px 0 10px", fontSize:"18px"}}>Departure</h3>
+<p className="help" suppressHydrationWarning>{traffic?.reason ?? "Based on typical patterns at this hour."}</p>
+
+                <div className="divider"></div>
+                <div className="kicker">Why this time</div>
+                <ul style={{margin:"10px 0", paddingLeft:"18px", color:"var(--muted)"}}>
+                  <li>Check-in / bag-drop: <strong suppressHydrationWarning>{typeof analysis?.breakdown?.[0]?.time === "number" ? analysis.breakdown[0].time : "—"} min</strong></li>
+                  <li>Security screening: <strong suppressHydrationWarning>{typeof analysis?.breakdown?.[1]?.time === "number" ? analysis.breakdown[1].time : "—"} min</strong></li>
+                  <li>Walk to gate: <strong suppressHydrationWarning>{typeof analysis?.breakdown?.[2]?.time === "number" ? analysis.breakdown[2].time : "—"} min</strong></li>
+                  <li>Contingency: <strong suppressHydrationWarning>{typeof analysis?.breakdown?.[3]?.time === "number" ? analysis.breakdown[3].time : "—"} min</strong></li>
+                </ul>
+                {explanation?.contingencyReason && (
+                  <p className="help" style={{marginTop:-6}} suppressHydrationWarning>Why contingency? {explanation.contingencyReason}</p>
+                )}
+                {Array.isArray(explanation?.notes) && explanation.notes.length>0 && (
+                  <>
+                    <div className="kicker" style={{marginTop:12}}>Notes</div>
+                    <ul style={{margin:"10px 0", paddingLeft:"18px", color:"var(--muted)"}}>
+                      {explanation.notes.map((n:string,i:number)=><li key={i}>{n}</li>)}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-inner">
+                <div className="kicker">Security & traffic</div>
+                <h3 style={{margin:"6px 0 10px", fontSize:"18px"}}>
+                  <span suppressHydrationWarning>{security}</span>
+                  <span style={{opacity:.5}}> · </span>
+                  <span suppressHydrationWarning>Terminal traffic: {traffic?.level ?? "—"}</span>
+                </h3>
+<p className="help" suppressHydrationWarning>{traffic?.reason ?? "Based on typical patterns at this hour."}</p>
+
+                <div className="divider"></div>
+                <div className="kicker">Timeline</div>
+                <div className="timeline" style={{marginTop:8}}>
+                  <div className="item" suppressHydrationWarning><span className="dot"></span> Arrive: <strong>{fmtTimeISO(timeline?.arriveByISO)}</strong></div>
+                  <div className="item" suppressHydrationWarning><span className="dot"></span> Check-in done: <strong>{fmtTimeISO(timeline?.checkInDoneISO)}</strong></div>
+                  <div className="item" suppressHydrationWarning><span className="dot"></span> Security done: <strong>{fmtTimeISO(timeline?.securityDoneISO)}</strong></div>
+                  <div className="item" suppressHydrationWarning><span className="dot"></span> At gate by: <strong>{fmtTimeISO(timeline?.gateByISO)}</strong></div>
+                  <div className="item" suppressHydrationWarning><span className="dot"></span> Departure: <strong>{fmtTimeISO(depISO)}</strong></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {showRaw && (
+            <section className="card">
+              <div className="card-inner">
+                <div className="kicker">Raw output</div>
+                <pre className="code">{JSON.stringify(result, null, 2)}</pre>
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+
+

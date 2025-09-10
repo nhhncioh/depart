@@ -1,10 +1,8 @@
-"use client";
+﻿"use client";
 import "./styles.css";
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";/** ---------- tiny helpers (safe, self-contained) ---------- */
-
-function fmtTimeISO(iso?: string | null, timeZone?: string) { return fmtTimeISOStable(iso, timeZone); }
 
 function fmtTimeISOStable(iso?: string | null, timeZone?: string) {
   if (!iso) return "";
@@ -18,7 +16,7 @@ function fmtTimeISOStable(iso?: string | null, timeZone?: string) {
   if (timeZone) (opts as any).timeZone = timeZone;
 
   const parts = new Intl.DateTimeFormat("en-US", opts).formatToParts(d);
-  const get = (t: any) => parts.find(p => p.type === t)?.value ?? "\u2014";
+  const get = (t: any) => parts.find(p => p.type === t)?.value ?? "";
 
   const hour = String(get("hour")).padStart(2, "0");
   const minute = String(get("minute")).padStart(2, "0");
@@ -32,7 +30,7 @@ function parseDataParam(param: string | null) {
 
   const tryJSON = (s: string) => { try { return JSON.parse(s); } catch { return null; } };
 
-  // Try Base64URL -> JSON
+  // Try Base64URL → JSON
   try {
     const b64 = param.replace(/-/g, '+').replace(/_/g, '/');
     const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
@@ -43,7 +41,7 @@ function parseDataParam(param: string | null) {
     if (o) return o;
   } catch {}
 
-  // Try URI decoding once/twice -> JSON
+  // Try URI decoding once/twice → JSON
   try {
     const once = decodeURIComponent(param);
     const o1 = tryJSON(once);
@@ -56,68 +54,6 @@ function parseDataParam(param: string | null) {
   // Fallback: direct JSON
   return tryJSON(param);
 }
-function generateComfortLevels(result: any) {
-  const fmt = (iso?: string | null) => iso ? fmtTimeISO(iso) : "\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u00A0\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00E2\u20AC\u00A6\u00C3\u201A\u00C2\u00A1\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u2020\u00E2\u20AC\u2122\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C6\u2019\u00C3\u201A\u00C2\u00A2\u00C3\u0192\u00C2\u00A2\u00C3\u00A2\u00E2\u20AC\u0161\u00C2\u00AC\u00C3\u2026\u00C2\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u00AC\u00C3\u0192\u00C6\u2019\u00C3\u00A2\u00E2\u201A\u00AC\u00C5\u00A1\u00C3\u0192\u00E2\u20AC\u0161\u00C3\u201A\u00C2\u009D";
-
-  const riskyISO    = result?.bands?.aggressiveLeaveLocalISO ?? result?.leaveByLocalISO ?? null;
-  const moderateISO = result?.bands?.normalLeaveLocalISO     ?? result?.leaveByLocalISO ?? null;
-  const cautiousISO = result?.bands?.cautiousLeaveLocalISO   ?? result?.leaveByLocalISO ?? null;
-
-  return {
-    risky:    { time: fmt(riskyISO),    description: "Tight window; best for light travelers or PreCheck." },
-    moderate: { time: fmt(moderateISO), description: "Balanced timing for most travelers." },
-    cautious: { time: fmt(cautiousISO), description: "Extra buffer for peace of mind and unexpected delays." },
-    _iso: { riskyISO, moderateISO, cautiousISO }
-  };
-}
-function generateAnalysis(result: any) {
-  const bd = result?.breakdown ?? {};
-  const n = (v: any, d: number) => (typeof v === "number" && isFinite(v) ? v : d);
-
-  const items = [
-    { factor: "Check-in / bag-drop", time: n(bd.checkInMin, 30), reason: "Airline counters & baggage drop at this hour." },
-    { factor: "Security screening",  time: n(bd.securityWaitMin, 5), reason: (result?.meta?.securityDetail ?? "\u2014") },
-    { factor: "Walk to gate",        time: n(bd.walkBufferMin, 12), reason: "Distance and terminal layout." },
-    { factor: "Contingency",         time: n(bd.contingencyMin ?? result?.meta?.airportMiscBufferMin, 8), reason: "Buffer for minor slowdowns." }
-  ];
-
-  const windowMinutes = Math.round(((result?.meta?.horizonHours ?? 1.5) * 60));
-  const bus = (result?.meta?.busyness ?? result?.meta?.business) as any;
-  const count = (typeof bus?.count === "number") ? bus.count : null;
-
-  const activityLevel = (typeof bus?.score === "number")
-    ? (bus.score >= 60 ? "High" : (bus.score >= 30 ? "Moderate" : "Typical"))
-    : "Typical";
-
-  return {
-    activityLevel: activityLevel,
-    departuresInWindow: count,
-    windowMinutes: windowMinutes,
-    departureContext: (result?.meta?.securityDetail ?? "\u2014"),
-    extendedContext: (result?.meta?.securitySource ? ("Source: " + result.meta.securitySource) : null),
-    breakdown: items
-  };
-}
-
-
-function fmtDateTimeISO(iso?: string | null) {
-  if (!iso) return "\u2014";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "\u2014";
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: "short", month: "short", day: "numeric",
-    hour: "numeric", minute: "2-digit", hour12: true
-  }).format(d);
-}
-
-
-function bufferTextFor(_: string | null) {
-  return "Includes check-in, security, walk, and contingency.";
-}
-
-
-
-
 export default function ResultPage() {
   const sp = useSearchParams();
   const [showRaw, setShowRaw] = useState(false);
@@ -126,42 +62,8 @@ export default function ResultPage() {
 
   const headerISO  = result?.departureLocalISO || result?.departLocalISO || result?.leaveByLocalISO || null;
   const heroISO    = result?.leaveByLocalISO || result?.bands?.aggressiveLeaveLocalISO || result?.arriveByLocalISO || headerISO;
-  let timeline   = (result?.timeline as any) || {};
-  // --- Fill timeline fields from available data if missing ---
-  {
-    const bd = (result?.breakdown as any) || {};
-    const num = (v: any, d: number) => (typeof v === "number" && isFinite(v) ? v : d);
-    const addMinISO = (iso?: string | null, min?: number) => {
-      if (!iso || typeof min !== "number" || !isFinite(min)) return null;
-      const d = new Date(iso); if (Number.isNaN(d.getTime())) return null;
-      d.setMinutes(d.getMinutes() + Math.round(min));
-      return d.toISOString();
-    };
-    const totalBack = num(bd.checkInMin, 30) + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12) + num(bd.contingencyMin, 8);
-    const arriveComp   = (timeline as any).arriveByISO ?? (result as any)?.arriveByLocalISO ?? (result as any)?.arriveAirportLocalISO ?? (depISO ? addMinISO(depISO, -totalBack) : null);
-    const checkInComp  = (timeline as any).checkInDoneISO ?? (arriveComp ? addMinISO(arriveComp,   num(bd.checkInMin, 30)) : null);
-    const securityComp = (timeline as any).securityDoneISO ?? (arriveComp ? addMinISO(arriveComp,   num(bd.checkInMin, 30) + num(bd.securityWaitMin, 5)) : null);
-    const gateComp     = (timeline as any).gateByISO       ?? (arriveComp ? addMinISO(arriveComp,   num(bd.checkInMin, 30) + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12))
-                                                              : (depISO ? addMinISO(depISO, -num(bd.walkBufferMin, 12)) : null));
-    timeline = { ...timeline,
-      arriveByISO:    (timeline as any).arriveByISO    ?? arriveComp,
-      checkInDoneISO: (timeline as any).checkInDoneISO ?? checkInComp,
-      securityDoneISO:(timeline as any).securityDoneISO?? securityComp,
-      gateByISO:      (timeline as any).gateByISO      ?? gateComp,
-    };
-  }
-  let traffic    = (result?.traffic as any) || {};
-  // --- Auto-fill traffic when not provided (derive from meta.busyness) ---
-  if (!traffic.level) {
-    const bus = (result?.meta?.busyness ?? result?.meta?.business) as any;
-    if (bus) {
-      const score = Number.isFinite(bus?.score) ? Number(bus.score) : 0;
-      const level = score >= 60 ? "Heavy" : (score >= 30 ? "Moderate" : (score > 0 ? "Light" : "Typical"));
-      const count = (typeof bus?.count === "number") ? bus.count : null;
-      const windowMin = (typeof bus?.windowMin === "number") ? bus.windowMin : Math.round(((result?.meta?.horizonHours ?? 1.5) * 60));
-      traffic = { level, reason: `${score}% \u00B7 ${count ?? "\u2014"} deps in \u00B1${windowMin}m` };
-    }
-  }
+  const timeline   = (result?.timeline as any) || {};
+  const traffic    = (result?.traffic as any) || {};
   const routeType  = result?.routeType || (result?.explanation?.isInternational ? "International" : "Domestic");
   const overall    = result?.overall || null;
   const confidence = result?.confidence || { level: "Medium" };
@@ -178,7 +80,7 @@ export default function ResultPage() {
         <div className="container">
           <div className="card card-lg">
             <div className="card-inner" style={{ textAlign: "center" }}>
-              <h1 suppressHydrationWarning data-hero-title>{fmtTimeISOStable(headerISO) ?? "\u2014"}</h1>
+              <h1 suppressHydrationWarning data-hero-title>{fmtTimeISOStable(headerISO) ?? "See details"}</h1>
               <p className="sub">Let&apos;s try that again.</p>
               <div className="footer-row" style={{ justifyContent: "center" }}>
                 <Link className="btn" href="/">Start over</Link>
@@ -215,12 +117,12 @@ export default function ResultPage() {
               {(result?.airport || result?.departureLocalISO) && (
                 <div className="help" style={{ marginTop: 4 }} suppressHydrationWarning>
                   {result?.airport}
-                  {result?.airport && result?.departureLocalISO ? " \u00B7 " : ""}
+                  {result?.airport && result?.departureLocalISO ? " · " : ""}
                   {fmtDateTimeISO(result?.departureLocalISO)}
                 </div>
               )}
 
-              <div className="time-big" suppressHydrationWarning>{fmtTimeISOStable(heroISO) ?? "\u2014"}</div>
+              <div className="time-big" suppressHydrationWarning>{fmtTimeISOStable(heroISO) ?? "See details"}</div>
               <p className="help" style={{ marginTop: 8 }} suppressHydrationWarning>{buffers}</p>
 
               <div className="row" style={{ justifyContent: "space-between", marginTop: 8, flexWrap: "wrap" }}>
@@ -297,7 +199,7 @@ export default function ResultPage() {
                     {analysis.departuresInWindow !== null && (
                       <div style={{ textAlign: "right" }}>
                         <div style={{ color: "var(--accent)", fontWeight: 600, fontSize: "24px" }}>{analysis.departuresInWindow}</div>
-                        <div style={{ color: "var(--muted)", fontSize: "12px" }}>flights in {"\u00B1"}{analysis.windowMinutes} min</div>
+                        <div style={{ color: "var(--muted)", fontSize: "12px" }}>flights in ±{analysis.windowMinutes} min</div>
                       </div>
                     )}
                   </div>
@@ -336,15 +238,15 @@ export default function ResultPage() {
               <div className="card-inner">
                 <div className="kicker">Your flight</div>
                 <h3 style={{ margin: "6px 0 10px", fontSize: "18px" }}>Departure</h3>
-                <p className="help" suppressHydrationWarning>{traffic?.reason ?? "\u2014"}</p>
+                <p className="help" suppressHydrationWarning>{traffic?.reason ?? "Based on typical patterns at this hour."}</p>
 
                 <div className="divider"></div>
                 <div className="kicker">Why this time</div>
                 <ul style={{ margin: "10px 0", paddingLeft: "18px", color: "var(--muted)" }}>
-                  <li>Check-in / bag-drop: <strong suppressHydrationWarning>{analysis.breakdown[0]?.time ?? "\u2014"} min</strong></li>
-                  <li>Security screening:  <strong suppressHydrationWarning>{analysis.breakdown[1]?.time ?? "\u2014"} min</strong></li>
-                  <li>Walk to gate:        <strong suppressHydrationWarning>{analysis.breakdown[2]?.time ?? "\u2014"} min</strong></li>
-                  <li>Contingency:         <strong suppressHydrationWarning>{analysis.breakdown[3]?.time ?? "\u2014"} min</strong></li>
+                  <li>Check-in / bag-drop: <strong suppressHydrationWarning>{analysis.breakdown[0]?.time ?? "—"} min</strong></li>
+                  <li>Security screening:  <strong suppressHydrationWarning>{analysis.breakdown[1]?.time ?? "—"} min</strong></li>
+                  <li>Walk to gate:        <strong suppressHydrationWarning>{analysis.breakdown[2]?.time ?? "—"} min</strong></li>
+                  <li>Contingency:         <strong suppressHydrationWarning>{analysis.breakdown[3]?.time ?? "—"} min</strong></li>
                 </ul>
                 {result?.explanation?.contingencyReason && (
                   <p className="help" style={{ marginTop: -6 }} suppressHydrationWarning>
@@ -366,11 +268,11 @@ export default function ResultPage() {
               <div className="card-inner">
                 <div className="kicker">Security & traffic</div>
                 <h3 style={{ margin: "6px 0 10px", fontSize: "18px" }}>
-                  <span suppressHydrationWarning>{result?.security ?? "\u2014"}</span>
-                  <span style={{ opacity: .5 }}>{" \u00B7 "}</span>
-                  <span suppressHydrationWarning>Terminal traffic: {traffic?.level ?? "\u2014"}</span>
+                  <span suppressHydrationWarning>{result?.security ?? "Security"}</span>
+                  <span style={{ opacity: .5 }}> · </span>
+                  <span suppressHydrationWarning>Terminal traffic: {traffic?.level ?? "—"}</span>
                 </h3>
-                <p className="help" suppressHydrationWarning>{traffic?.reason ?? "\u2014"}</p>
+                <p className="help" suppressHydrationWarning>{traffic?.reason ?? "Based on typical patterns at this hour."}</p>
 
                 <div className="divider"></div>
                 <div className="kicker">Timeline</div>
@@ -398,8 +300,6 @@ export default function ResultPage() {
     </main>
   );
 }
-
-
 
 
 

@@ -1,0 +1,77 @@
+﻿/* ---- light theme tokens ---- */
+.app-shell {
+  --bg: #f5f6fa;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+  --text: #111827;
+  --muted: #6b7280;
+  --accent: #7dd3fc; /* matches your svg gradient start */
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  padding: 32px 0 60px;
+}
+
+/* layout */
+.container { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+.header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.brand { display:flex; align-items:center; gap:10px; font-weight:700; }
+.badge {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+  padding: 4px 10px; border-radius: 9999px;
+  background: #f8fafc; border: 1px solid var(--border); color: var(--muted);
+}
+
+/* grid & cards */
+.grid { display:grid; gap: 16px; }
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04);
+}
+.card-lg .card-inner { padding: 28px; }
+.card .card-inner { padding: 18px; }
+
+.kicker {
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-size: 11px;
+  color: var(--muted);
+}
+.time-big { font-size: 56px; line-height: 1; font-weight: 800; }
+.help { color: var(--muted); font-size: 14px; }
+.sub { color: var(--muted); }
+
+.row { display:flex; align-items:center; gap: 8px; }
+.footer-row { display:flex; gap:10px; margin-top: 16px; flex-wrap: wrap; }
+
+.chip {
+  font-size: 13px; padding: 6px 10px; border-radius: 9999px;
+  background:#f8fafc; border:1px solid var(--border); color:#0f172a;
+}
+.chip.good { background:#ecfdf5; border-color:#a7f3d0; }
+.chip.bad  { background:#fff1f2; border-color:#fecdd3; }
+
+.divider { height:1px; background:var(--border); margin:12px 0; }
+
+/* timeline */
+.timeline { display:grid; gap:10px; }
+.timeline .item { display:flex; align-items:center; gap:8px; }
+.timeline .dot {
+  width:8px; height:8px; border-radius:50%;
+  background: var(--accent); display:inline-block; margin-right:4px;
+}
+
+/* links & buttons (basic) */
+a.btn, .btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  padding: 8px 14px; border-radius: 10px; border:1px solid var(--border);
+  background:#0ea5e9; color:#fff; text-decoration:none; font-weight:600;
+}
+.btn.btn-secondary { background:#f8fafc; color:#0f172a; }
+
+svg { display:block; }
