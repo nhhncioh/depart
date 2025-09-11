@@ -91,6 +91,15 @@ export async function computeRecommendation(input: RecommendInput): Promise<Reco
     }
   }
 
+  // Add international flight security adjustment
+  if (flightType === "international") {
+    const intlMultiplier = 1.3; // 30% longer for international flights
+    securityWaitMin = Math.round(securityWaitMin * intlMultiplier);
+    if (securityDetail) {
+      securityDetail += " + intl adjustment";
+    }
+  }
+
   const walkBufferMin = flightType === "international" ? 20 : 12;
   const airportMiscBufferMin = 8;
   const ride = options?.rideType ?? "rideshare";

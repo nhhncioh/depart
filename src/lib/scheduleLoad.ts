@@ -187,9 +187,9 @@ export async function predictSecurityFromScheduleWithLoad(
   const sb = await getScheduleBusyness(airport, depLocalISO, WINDOW);
   const legacy = toLegacyBusyness(airport, sb, WINDOW);
 
-  // map 1..100 busyness -> ~0.7x..1.3x multiplier
-  const factor = 0.7 + (sb.busynessPercent / 100) * 0.6;
-  const minutes = clamp(Math.round(base * factor), 5, 120);
+  // map 1..100 busyness -> ~0.8x..2.2x multiplier (much more aggressive scaling)
+  const factor = 0.8 + (sb.busynessPercent / 100) * 1.4;
+  const minutes = clamp(Math.round(base * factor), 8, 180);
 
   // Human label from % busyness
   const label =
