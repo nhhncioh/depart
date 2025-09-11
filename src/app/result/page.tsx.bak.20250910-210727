@@ -411,14 +411,7 @@ export default function ResultPage() {
                 <div className="kicker">Timeline</div>
                 <div className="timeline" style={{ marginTop: 8 }}>
                   <div className="item" suppressHydrationWarning><span className="dot"></span> Arrive: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.arriveByISO)}</strong></div>
-                  {(() => {
-                    const checkedIn = !!(result?.flags?.alreadyCheckedIn ?? result?.flags?.checkedIn ?? result?.inputs?.checkedIn);
-                    const hasBag = !!(result?.flags?.hasCheckedBag ?? result?.flags?.checkedBag ?? result?.inputs?.hasCheckedBag ?? result?.inputs?.bags);
-                    const skipCheckIn = !!(checkedIn && !hasBag);
-                    return !skipCheckIn ? (
-                      <div className="item" suppressHydrationWarning><span className="dot"></span> Check-in done: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.checkInDoneISO)}</strong></div>
-                    ) : null;
-                  })()}
+                  <div className="item" suppressHydrationWarning><span className="dot"></span> Check-in done: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.checkInDoneISO)}</strong></div>
                   <div className="item" suppressHydrationWarning><span className="dot"></span> Security done: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.securityDoneISO)}</strong></div>
                   <div className="item" suppressHydrationWarning><span className="dot"></span> At gate by: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.gateByISO)}</strong></div>
                   <div className="item" suppressHydrationWarning><span className="dot"></span> Departure: <strong suppressHydrationWarning>{fmtTimeISOStable(depISO)}</strong></div>

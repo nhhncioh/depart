@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
       options: {
         checkedBags: !!body?.checkedBag,
         trustedTraveler: !!body?.hasNexus,
+        alreadyCheckedIn: !!body?.alreadyCheckedIn,
         securityOverrideMinutes: (typeof body?.securityOverrideMinutes === "number") ? body.securityOverrideMinutes : undefined,
       },
     } as any;
@@ -25,6 +26,12 @@ export async function POST(req: NextRequest) {
       ...result,
       airport: input.airport,
       departureLocalISO: input.depTimeLocalISO,
+      flags: {
+        alreadyCheckedIn: input.options.alreadyCheckedIn,
+        hasCheckedBag: input.options.checkedBags,
+        trustedTraveler: input.options.trustedTraveler,
+        isInternational: input.flightType === "international",
+      },
     }, null, 2), { status: 200, headers: { "content-type": "application/json" }});
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e?.message ?? "Unknown error" }), { status: 500 });

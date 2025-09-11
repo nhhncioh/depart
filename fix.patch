@@ -1,0 +1,119 @@
+diff --git a/src/app/calculating/page.tsx b/src/app/calculating/page.tsx
+index 6b3c671..e2b1e44 100644
+--- a/src/app/calculating/page.tsx
++++ b/src/app/calculating/page.tsx
+@@ -28,7 +28,13 @@ export default function CalculatingPage(){
+     if(!payload){ setError("Missing flight details. Please start again."); return; }
+
+     const depISO = payload?.departureLocalISO || (payload?.departureEpochMs ? new Date(payload.departureEpochMs).toISOString() : undefined);
+-    const common = { checkedBag: payload.checkedBag, hasNexus: payload.hasNexus, isInternational: payload.isInternational, airline: payload.airline };
++    const common = {
++      checkedBag: payload.checkedBag,
++      hasNexus: payload.hasNexus,
++      isInternational: payload.isInternational,
++      airline: payload.airline,
++      alreadyCheckedIn: payload.alreadyCheckedIn,
++    };
+
+     const candidates = [
+       { ...payload },
+@@ -62,8 +68,15 @@ export default function CalculatingPage(){
+               sessionStorage.setItem("depart:lastResultPrev", prevRaw || "null");
+             }catch{}
+
+-            try { sessionStorage.setItem("depart:lastResult", JSON.stringify(data)); } catch {}
+-            const b64 = encodeB64(data);
++            const explain = {
++              checkedBag: !!payload.checkedBag,
++              alreadyCheckedIn: !!payload.alreadyCheckedIn,
++              hasNexus: !!payload.hasNexus,
++              isInternational: !!payload.isInternational,
++            };
++            const merged = { ...data, explanation: { ...(data.explanation || {}), ...explain } };
++            try { sessionStorage.setItem("depart:lastResult", JSON.stringify(merged)); } catch {}
++            const b64 = encodeB64(merged);
+             await new Promise(r=>setTimeout(r, 450));
+             router.replace("/result?data=" + encodeURIComponent(b64));
+             return;
+diff --git a/src/app/result/page.tsx b/src/app/result/page.tsx
+index 6213d12..f16c9d1 100644
+--- a/src/app/result/page.tsx
++++ b/src/app/result/page.tsx
+@@ -72,10 +72,18 @@ function generateComfortLevels(result: any) {
+ }
+ function generateAnalysis(result: any) {
+   const bd = result?.breakdown ?? {};
++  const ex = result?.explanation ?? {};
++  const checkedBag = !!ex.checkedBag;
++  const alreadyCheckedIn = !!ex.alreadyCheckedIn;
+   const n = (v: any, d: number) => (typeof v === "number" && isFinite(v) ? v : d);
+
++  const checkInTime = alreadyCheckedIn && !checkedBag ? 0 : n(bd.checkInMin, 30);
++  const checkInReason = alreadyCheckedIn && !checkedBag
++    ? "Skipped - already checked in with carry-on only"
++    : "Airline counters & baggage drop at this hour.";
++
+   const items = [
+-    { factor: "Check-in / bag-drop", time: n(bd.checkInMin, 30), reason: "Airline counters & baggage drop at this hour." },
++    { factor: "Check-in / bag-drop", time: checkInTime, reason: checkInReason },
+     { factor: "Security screening",  time: n(bd.securityWaitMin, 5), reason: (result?.meta?.securityDetail ?? "—") },
+     { factor: "Walk to gate",        time: n(bd.walkBufferMin, 12), reason: "Distance and terminal layout." },
+     { factor: "Contingency",         time: n(bd.contingencyMin ?? result?.meta?.airportMiscBufferMin, 8), reason: "Buffer for minor slowdowns." }
+@@ -123,9 +131,13 @@ export default function ResultPage() {
+   const [showRaw, setShowRaw] = useState(false);
+
+   const result = useMemo(() => parseDataParam(sp.get("data")), [sp]);
++  const explain: any = result?.explanation || {};
++  const checkedBag = !!explain.checkedBag;
++  const alreadyCheckedIn = !!explain.alreadyCheckedIn;
+
+   const headerISO  = result?.departureLocalISO || result?.departLocalISO || result?.leaveByLocalISO || null;
+   const heroISO    = result?.leaveByLocalISO || result?.bands?.aggressiveLeaveLocalISO || result?.arriveByLocalISO || headerISO;
++  const depISO     = result?.departureLocalISO || null;
+   let timeline   = (result?.timeline as any) || {};
+   // --- Fill timeline fields from available data if missing ---
+   {
+@@ -137,11 +149,12 @@ export default function ResultPage() {
+       d.setMinutes(d.getMinutes() + Math.round(min));
+       return d.toISOString();
+     };
+-    const totalBack = num(bd.checkInMin, 30) + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12) + num(bd.contingencyMin, 8);
+-    const arriveComp   = (timeline as any).arriveByISO ?? (result as any)?.arriveByLocalISO ?? (result as any)?.arriveAirportLocalISO ?? (depISO ? addMinISO(depISO, -totalBack) : null);
+-    const checkInComp  = (timeline as any).checkInDoneISO ?? (arriveComp ? addMinISO(arriveComp,   num(bd.checkInMin, 30)) : null);
+-    const securityComp = (timeline as any).securityDoneISO ?? (arriveComp ? addMinISO(arriveComp,   num(bd.checkInMin, 30) + num(bd.securityWaitMin, 5)) : null);
+-    const gateComp     = (timeline as any).gateByISO       ?? (arriveComp ? addMinISO(arriveComp,   num(bd.checkInMin, 30) + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12))
++    const checkInMin = alreadyCheckedIn && !checkedBag ? 0 : num(bd.checkInMin, 30);
++    const totalBack = checkInMin + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12) + num(bd.contingencyMin, 8);
++    const arriveComp   = (timeline as any).arriveByISO ?? (result as any)?.arriveByLocalISO ?? (result as any)?.arriveAirportLocalISO ?? (depISO ? addMinISO(depISO, -totalBack) : null);
++    const checkInComp  = alreadyCheckedIn && !checkedBag ? null : ((timeline as any).checkInDoneISO ?? (arriveComp ? addMinISO(arriveComp,   checkInMin) : null));
++    const securityComp = (timeline as any).securityDoneISO ?? (arriveComp ? addMinISO(arriveComp,   checkInMin + num(bd.securityWaitMin, 5)) : null);
++    const gateComp     = (timeline as any).gateByISO       ?? (arriveComp ? addMinISO(arriveComp,   checkInMin + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12))
+                                                               : (depISO ? addMinISO(depISO, -num(bd.walkBufferMin, 12)) : null));
+     timeline = { ...timeline,
+       arriveByISO:    (timeline as any).arriveByISO    ?? arriveComp,
+@@ -166,11 +179,11 @@ export default function ResultPage() {
+   const overall    = result?.overall || null;
+   const confidence = result?.confidence || { level: "Medium" };
+   const changed    = result?.changed || null;
+-  const depISO     = result?.departureLocalISO || null;
+-
+   const comfortLevels = useMemo(() => generateComfortLevels(result || {}), [result]);
+   const analysis      = useMemo(() => generateAnalysis(result || {}), [result]);
+-  const buffers       = "Includes check-in, security, walk, and contingency.";
++  const buffers       = (alreadyCheckedIn && !checkedBag)
++    ? "Includes security, walk, and contingency."
++    : "Includes check-in, security, walk, and contingency.";
+
+   if (!result) {
+     return (
+@@ -376,7 +389,9 @@ export default function ResultPage() {
+                 <div className="kicker">Timeline</div>
+                 <div className="timeline" style={{ marginTop: 8 }}>
+                   <div className="item" suppressHydrationWarning><span className="dot"></span> Arrive: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.arriveByISO)}</strong></div>
+-                  <div className="item" suppressHydrationWarning><span className="dot"></span> Check-in done: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.checkInDoneISO)}</strong></div>
++                  {(!alreadyCheckedIn || checkedBag) && (
++                    <div className="item" suppressHydrationWarning><span className="dot"></span> Check-in done: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.checkInDoneISO)}</strong></div>
++                  )}
+                   <div className="item" suppressHydrationWarning><span className="dot"></span> Security done: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.securityDoneISO)}</strong></div>
+                   <div className="item" suppressHydrationWarning><span className="dot"></span> At gate by: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.gateByISO)}</strong></div>
+                   <div className="item" suppressHydrationWarning><span className="dot"></span> Departure: <strong suppressHydrationWarning>{fmtTimeISOStable(depISO)}</strong></div>

@@ -72,54 +72,39 @@ function generateComfortLevels(result: any) {
 }
 function generateAnalysis(result: any) {
   const bd = result?.breakdown ?? {};
-  const n = (v: any, d: number) => (typeof v === "number" && isFinite(v) ? v : d);
-
   // Dynamic defaults based on airport capacity & busyness
   const isIntl = !!(result?.flags?.isInternational ?? result?.isInternational ?? (result?.flightType === "international"));
   const capacity = (result?.meta?.busyness?.capacityTier ?? "medium").toString().toLowerCase();
   const tierMul = capacity === "mega" ? 1.35 : (capacity === "large" ? 1.20 : (capacity === "small" ? 0.90 : 1.00));
   const score = (typeof result?.meta?.busyness?.score === "number") ? result.meta.busyness.score : 0;
   const busyAdd = score >= 60 ? 10 : (score >= 30 ? 5 : 0); // minutes
-  const baseCheck = isIntl ? 45 : 30;   // baseline mins
+  const baseCheck = isIntl ? 45 : 30;  // baseline mins
   const baseSec   = isIntl ? 10 : 5;
   const intlImmigrationAdd = isIntl ? ((capacity === "large" || capacity === "mega") ? 10 : 5) : 0;
   const chkDef = Math.round(baseCheck * tierMul + busyAdd + intlImmigrationAdd);
-  const secDef = Math.round(baseSec   * tierMul + Math.round(busyAdd / 2));
-
-  // Skip check-in if already checked in and no checked bag
-  const checkedIn = !!(result?.flags?.alreadyCheckedIn ?? result?.flags?.checkedIn ?? result?.inputs?.checkedIn);
-  const hasBag    = !!(result?.flags?.hasCheckedBag ?? result?.flags?.checkedBag ?? result?.inputs?.hasCheckedBag ?? result?.inputs?.bags);
-  const skipCheckIn = !!(checkedIn && !hasBag);
-  const checkInEff  = skipCheckIn ? 0 : n((bd as any).checkInMin, chkDef);
-  const reasonCheck = skipCheckIn ? "Already checked in and no checked bag." : "Airline counters & baggage drop at this hour.";
+  const secDef = Math.round(baseSec   * tierMul + Math.round(busyAdd/2));
+  const n = (v: any, d: number) => (typeof v === "number" && isFinite(v) ? v : d);
 
   const items = [
-    { factor: "Check-in / bag-drop", time: checkInEff, reason: reasonCheck },
-    { factor: "Security screening",  time: n((bd as any).securityWaitMin, secDef), reason: (result?.meta?.securityDetail ?? "Typical security wait for this timeslot.") },
-    { factor: "Walk to gate",        time: n((bd as any).walkBufferMin, 12), reason: "Distance and terminal layout." },
-    { factor: "Contingency",         time: n(((bd as any).contingencyMin ?? result?.meta?.airportMiscBufferMin), 8), reason: "Buffer for minor slowdowns." }
+    { factor: "Check-in / bag-drop", time: n(bd.checkInMin, chkDef), reason: "Airline counters & baggage drop at this hour." },
+    { factor: "Security screening",  time: n(bd.securityWaitMin, secDef), reason: (result?.meta?.securityDetail ?? "\u2014") },
+    { factor: "Walk to gate",        time: n(bd.walkBufferMin, 12), reason: "Distance and terminal layout." },
+    { factor: "Contingency",         time: n(bd.contingencyMin ?? result?.meta?.airportMiscBufferMin, 8), reason: "Buffer for minor slowdowns." }
   ];
 
-  const windowMinutes =
-    (typeof result?.meta?.busyness?.windowMin === "number")
-      ? Math.max(15, Math.min(240, Math.round(result.meta.busyness.windowMin)))
-      : (typeof result?.meta?.horizonHours === "number")
-        ? Math.max(15, Math.min(240, Math.round(result.meta.horizonHours * 60)))
-        : 90;
-
+  const windowMinutes = Math.round(((result?.meta?.horizonHours ?? 1.5) * 60));
   const bus = (result?.meta?.busyness ?? result?.meta?.business) as any;
   const count = (typeof bus?.count === "number") ? bus.count : null;
 
-  const activityLevel =
-    (typeof bus?.score === "number")
-      ? (bus.score >= 60 ? "High" : (bus.score >= 30 ? "Moderate" : "Typical"))
-      : "Typical";
+  const activityLevel = (typeof bus?.score === "number")
+    ? (bus.score >= 60 ? "High" : (bus.score >= 30 ? "Moderate" : "Typical"))
+    : "Typical";
 
   return {
-    activityLevel,
+    activityLevel: activityLevel,
     departuresInWindow: count,
-    windowMinutes,
-    departureContext: (result?.meta?.securityDetail ?? "Based on schedule load and typical patterns."),
+    windowMinutes: windowMinutes,
+    departureContext: (result?.meta?.securityDetail ?? "\u2014"),
     extendedContext: (result?.meta?.securitySource ? ("Source: " + result.meta.securitySource) : null),
     breakdown: items
   };
@@ -156,10 +141,6 @@ export default function ResultPage() {
   // --- Fill timeline fields from available data if missing ---
   {
     const bd = (result?.breakdown as any) || {};
-    const checkedIn = !!(result?.flags?.alreadyCheckedIn ?? result?.flags?.checkedIn ?? result?.inputs?.checkedIn);
-    const hasBag    = !!(result?.flags?.hasCheckedBag ?? result?.flags?.checkedBag ?? result?.inputs?.hasCheckedBag ?? result?.inputs?.bags);
-    const skipCheckIn = !!(checkedIn && !hasBag);
-    const numCheck = skipCheckIn ? 0 : ((typeof bd.checkInMin === "number" && isFinite(bd.checkInMin)) ? bd.checkInMin : 30);
     const num = (v: any, d: number) => (typeof v === "number" && isFinite(v) ? v : d);
     const addMinISO = (iso?: string | null, min?: number) => {
       if (!iso || typeof min !== "number" || !isFinite(min)) return null;
@@ -167,11 +148,11 @@ export default function ResultPage() {
       d.setMinutes(d.getMinutes() + Math.round(min));
       return d.toISOString();
     };
-    const totalBack = numCheck + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12) + num(bd.contingencyMin, 8);
+    const totalBack = num(bd.checkInMin, 30) + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12) + num(bd.contingencyMin, 8);
     const arriveComp   = (timeline as any).arriveByISO ?? (result as any)?.arriveByLocalISO ?? (result as any)?.arriveAirportLocalISO ?? (depISO ? addMinISO(depISO, -totalBack) : null);
-    const checkInComp  = (timeline as any).checkInDoneISO ?? (arriveComp ? addMinISO(arriveComp,   numCheck) : null);
-    const securityComp = (timeline as any).securityDoneISO ?? (arriveComp ? addMinISO(arriveComp,   numCheck + num(bd.securityWaitMin, 5)) : null);
-    const gateComp     = (timeline as any).gateByISO       ?? (arriveComp ? addMinISO(arriveComp,   numCheck + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12))
+    const checkInComp  = (timeline as any).checkInDoneISO ?? (arriveComp ? addMinISO(arriveComp,   num(bd.checkInMin, 30)) : null);
+    const securityComp = (timeline as any).securityDoneISO ?? (arriveComp ? addMinISO(arriveComp,   num(bd.checkInMin, 30) + num(bd.securityWaitMin, 5)) : null);
+    const gateComp     = (timeline as any).gateByISO       ?? (arriveComp ? addMinISO(arriveComp,   num(bd.checkInMin, 30) + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12))
                                                               : (depISO ? addMinISO(depISO, -num(bd.walkBufferMin, 12)) : null));
     timeline = { ...timeline,
       arriveByISO:    (timeline as any).arriveByISO    ?? arriveComp,
@@ -188,12 +169,7 @@ export default function ResultPage() {
       const score = Number.isFinite(bus?.score) ? Number(bus.score) : 0;
       const level = score >= 60 ? "Heavy" : (score >= 30 ? "Moderate" : (score > 0 ? "Light" : "Typical"));
       const count = (typeof bus?.count === "number") ? bus.count : null;
-      const windowMin =
-  (typeof bus?.windowMin === "number")
-    ? Math.max(15, Math.min(240, Math.round(bus.windowMin)))
-    : (typeof result?.meta?.horizonHours === "number")
-      ? Math.max(15, Math.min(240, Math.round(result.meta.horizonHours * 60)))
-      : 90;
+      const windowMin = (typeof bus?.windowMin === "number") ? bus.windowMin : Math.round(((result?.meta?.horizonHours ?? 1.5) * 60));
       traffic = { level, reason: `${score}% \u00B7 ${count ?? "\u2014"} deps in \u00B1${windowMin}m` };
     }
   }
@@ -411,14 +387,7 @@ export default function ResultPage() {
                 <div className="kicker">Timeline</div>
                 <div className="timeline" style={{ marginTop: 8 }}>
                   <div className="item" suppressHydrationWarning><span className="dot"></span> Arrive: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.arriveByISO)}</strong></div>
-                  {(() => {
-                    const checkedIn = !!(result?.flags?.alreadyCheckedIn ?? result?.flags?.checkedIn ?? result?.inputs?.checkedIn);
-                    const hasBag = !!(result?.flags?.hasCheckedBag ?? result?.flags?.checkedBag ?? result?.inputs?.hasCheckedBag ?? result?.inputs?.bags);
-                    const skipCheckIn = !!(checkedIn && !hasBag);
-                    return !skipCheckIn ? (
-                      <div className="item" suppressHydrationWarning><span className="dot"></span> Check-in done: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.checkInDoneISO)}</strong></div>
-                    ) : null;
-                  })()}
+                  <div className="item" suppressHydrationWarning><span className="dot"></span> Check-in done: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.checkInDoneISO)}</strong></div>
                   <div className="item" suppressHydrationWarning><span className="dot"></span> Security done: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.securityDoneISO)}</strong></div>
                   <div className="item" suppressHydrationWarning><span className="dot"></span> At gate by: <strong suppressHydrationWarning>{fmtTimeISOStable(timeline?.gateByISO)}</strong></div>
                   <div className="item" suppressHydrationWarning><span className="dot"></span> Departure: <strong suppressHydrationWarning>{fmtTimeISOStable(depISO)}</strong></div>
