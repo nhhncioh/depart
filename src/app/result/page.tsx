@@ -321,26 +321,140 @@ export default function ResultPage() {
                   background: "rgba(110,231,255,0.1)",
                   border: "1px solid rgba(110,231,255,0.2)",
                   borderRadius: "12px",
-                  padding: "16px",
+                  padding: "20px",
                   marginBottom: "16px"
                 }}>
-                  <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
                     <div>
-                      <div style={{ color: "var(--accent)", fontWeight: 600, fontSize: "14px" }}>Airport Activity</div>
-                      <div style={{ color: "var(--text)", fontWeight: 700, fontSize: "16px" }}>{analysis.activityLevel}</div>
+                      <div style={{ color: "var(--accent)", fontWeight: 600, fontSize: "14px" }}>Airport Traffic</div>
+                      <div style={{ color: "var(--text)", fontWeight: 700, fontSize: "20px", marginTop: "4px" }}>{analysis.activityLevel}</div>
                     </div>
                     {analysis.departuresInWindow !== null && (
                       <div style={{ textAlign: "right" }}>
-                        <div style={{ color: "var(--accent)", fontWeight: 600, fontSize: "24px" }}>{analysis.departuresInWindow}</div>
+                        <div style={{ color: "var(--accent)", fontWeight: 700, fontSize: "28px" }}>{analysis.departuresInWindow}</div>
                         <div style={{ color: "var(--muted)", fontSize: "12px" }}>flights in {"\u00B1"}{analysis.windowMinutes} min</div>
                       </div>
                     )}
                   </div>
-                  <p className="help" style={{ marginBottom: analysis.extendedContext ? "8px" : "0" }} suppressHydrationWarning>
+
+                  {/* Activity Level Bar */}
+                  {(() => {
+                    const bus = (result?.meta?.busyness ?? result?.meta?.business) as any;
+                    const score = (typeof bus?.score === "number") ? bus.score : 0;
+                    const getActivityColor = (score: number) => {
+                      if (score >= 60) return "#ff6b6b";
+                      if (score >= 30) return "#feca57";
+                      return "#48dbfb";
+                    };
+                    const activityColor = getActivityColor(score);
+                    
+                    return (
+                      <div style={{ marginBottom: "16px" }}>
+                        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)" }}>Activity Level</span>
+                          <span style={{ fontSize: "13px", fontWeight: 600, color: activityColor }}>{score}%</span>
+                        </div>
+                        <div style={{
+                          width: "100%",
+                          height: "8px",
+                          background: "rgba(255,255,255,0.1)",
+                          borderRadius: "4px",
+                          overflow: "hidden"
+                        }}>
+                          <div style={{
+                            width: `${Math.max(2, score)}%`,
+                            height: "100%",
+                            background: `linear-gradient(90deg, ${activityColor}, ${activityColor}dd)`,
+                            borderRadius: "4px",
+                            transition: "width 0.3s ease"
+                          }}></div>
+                        </div>
+                        <div className="row" style={{ justifyContent: "space-between", marginTop: "4px", fontSize: "11px", color: "var(--muted)" }}>
+                          <span>Quiet</span>
+                          <span>Busy</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Flight Timeline Visualization */}
+                  {analysis.departuresInWindow !== null && analysis.departuresInWindow > 0 && (
+                    <div style={{ marginBottom: "16px" }}>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)", marginBottom: "20px" }}>
+                        Flight Distribution
+                      </div>
+                      <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "2px",
+                        height: "16px",
+                        background: "rgba(255,255,255,0.05)",
+                        borderRadius: "8px",
+                        padding: "2px",
+                        position: "relative",
+                        marginTop: "8px"
+                      }}>
+                        {/* Time markers */}
+                        <div style={{
+                          position: "absolute",
+                          top: "-16px",
+                          left: "0",
+                          right: "0",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          fontSize: "10px",
+                          color: "var(--muted)"
+                        }}>
+                          <span>-{analysis.windowMinutes}m</span>
+                          <span>your departure</span>
+                          <span>+{analysis.windowMinutes}m</span>
+                        </div>
+                        
+                        {/* Flight dots */}
+                        {Array.from({ length: Math.min(analysis.departuresInWindow, 20) }, (_, i) => {
+                          const position = Math.random() * 90 + 5; // Random position between 5% and 95%
+                          return (
+                            <div
+                              key={i}
+                              style={{
+                                position: "absolute",
+                                left: `${position}%`,
+                                width: "4px",
+                                height: "4px",
+                                background: "var(--accent)",
+                                borderRadius: "50%",
+                                boxShadow: "0 0 4px rgba(110,231,255,0.5)"
+                              }}
+                              title="Departure"
+                            />
+                          );
+                        })}
+                        
+                        {/* Current time indicator */}
+                        <div style={{
+                          position: "absolute",
+                          left: "50%",
+                          top: "-2px",
+                          bottom: "-2px",
+                          width: "2px",
+                          background: "#ff6b6b",
+                          borderRadius: "1px",
+                          transform: "translateX(-50%)"
+                        }} />
+                      </div>
+                      {analysis.departuresInWindow > 20 && (
+                        <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "4px", textAlign: "center" }}>
+                          Showing 20 of {analysis.departuresInWindow} flights
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="help" style={{ marginBottom: analysis.extendedContext ? "8px" : "0", fontSize: "13px" }} suppressHydrationWarning>
                     {analysis.departureContext}
                   </p>
                   {analysis.extendedContext && (
-                    <p className="help" style={{ fontSize: "12px", color: "var(--accent)", margin: 0 }} suppressHydrationWarning>
+                    <p className="help" style={{ fontSize: "11px", color: "var(--accent)", margin: 0 }} suppressHydrationWarning>
                       {analysis.extendedContext}
                     </p>
                   )}
