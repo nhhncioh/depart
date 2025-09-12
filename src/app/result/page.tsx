@@ -125,6 +125,506 @@ function generateAnalysis(result: any) {
   };
 }
 
+// Dynamic holiday calculation functions
+function getHolidayDates(year: number) {
+  // Utility functions
+  const getNthWeekday = (year: number, month: number, weekday: number, n: number): Date => {
+    const firstDay = new Date(year, month - 1, 1);
+    const firstWeekday = firstDay.getDay();
+    const daysToAdd = (weekday - firstWeekday + 7) % 7 + (n - 1) * 7;
+    return new Date(year, month - 1, 1 + daysToAdd);
+  };
+  
+  const getLastWeekday = (year: number, month: number, weekday: number): Date => {
+    const lastDay = new Date(year, month, 0);
+    const lastWeekday = lastDay.getDay();
+    const daysToSubtract = (lastWeekday - weekday + 7) % 7;
+    return new Date(year, month - 1, lastDay.getDate() - daysToSubtract);
+  };
+  
+  const addDays = (date: Date, days: number): Date => {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+  };
+  
+  const getEaster = (year: number): Date => {
+    const a = year % 19;
+    const b = Math.floor(year / 100);
+    const c = year % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31);
+    const day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(year, month - 1, day);
+  };
+
+  // Calculate all major travel surge dates
+  const holidays = {
+    // Top 10 busiest
+    thanksgivingWed: addDays(getNthWeekday(year, 11, 4, 4), -1), // Wed before Thanksgiving
+    thanksgivingTue: addDays(getNthWeekday(year, 11, 4, 4), -2), // Tue before Thanksgiving  
+    postThanksgivingSun: addDays(getNthWeekday(year, 11, 4, 4), 3), // Sun after Thanksgiving
+    memorialFri: addDays(getLastWeekday(year, 5, 1), -2), // Fri before Memorial Day
+    july4Sun: (() => {
+      const july4 = new Date(year, 6, 4);
+      const july4Day = july4.getDay();
+      return july4Day === 0 ? july4 : addDays(july4, (7 - july4Day) % 7);
+    })(), // Sunday after July 4th
+    christmasEveEve: new Date(year, 11, 23), // Dec 23
+    postChristmas: new Date(year, 11, 26), // Dec 26
+    christmasWeekFri: (() => {
+      const christmas = new Date(year, 11, 25);
+      const christmasDay = christmas.getDay();
+      // Find Friday of Christmas week (Dec 19-22 range)
+      const fridayOffset = (5 - christmasDay + 7) % 7;
+      return addDays(christmas, fridayOffset - 7);
+    })(),
+    laborFri: addDays(getNthWeekday(year, 9, 1, 1), -3), // Fri before Labor Day
+    laborMon: getNthWeekday(year, 9, 1, 1), // Labor Day Monday
+    
+    // Other high-traffic dates (11-30)
+    july4Thu: (() => {
+      const july4 = new Date(year, 6, 4);
+      return addDays(july4, july4.getDay() === 4 ? 0 : (4 - july4.getDay() + 7) % 7 - 7);
+    })(), // Thu before July 4
+    christmasWeekSat: new Date(year, 11, 20), // Sat starting Christmas week
+    christmasWeekSun: new Date(year, 11, 21), // Sun before Christmas
+    christmasWeekMon: new Date(year, 11, 22), // Mon of Christmas week
+    postChristmasFri: new Date(year, 11, 27), // Fri after Christmas
+    postChristmasSun: new Date(year, 11, 28), // Sun after Christmas
+    postChristmasMon: new Date(year, 11, 29), // Mon after Christmas
+    dec30: new Date(year, 11, 30), // Dec 30 returns
+    presidentsWeekFri: addDays(getNthWeekday(year, 2, 1, 3), -3), // Fri before Presidents Day
+    presidentsWeekSun: addDays(getNthWeekday(year, 2, 1, 3), -1), // Sun of Presidents weekend
+    presidentsMon: getNthWeekday(year, 2, 1, 3), // Presidents Day Monday
+    easterThu: addDays(getEaster(year), -3), // Thu before Easter
+    goodFriday: addDays(getEaster(year), -2), // Good Friday
+    easterMon: addDays(getEaster(year), 1), // Easter Monday
+    
+    // Canadian holidays
+    canadianThanksgivingFri: addDays(getNthWeekday(year, 10, 1, 2), -3), // Fri before Canadian Thanksgiving
+    canadianThanksgivingMon: getNthWeekday(year, 10, 1, 2), // Canadian Thanksgiving Monday
+    victoriaMon: getNthWeekday(year, 5, 1, -1), // Victoria Day (last Mon before May 25)
+  };
+  
+  return holidays;
+}
+
+function getHolidaySurge(departureDate: Date): { factor: number; description: string; severity: string } {
+  const year = departureDate.getFullYear();
+  const holidays = getHolidayDates(year);
+  const depTime = departureDate.getTime();
+  
+  // Check for exact matches and nearby dates
+  const checkDate = (holidayDate: Date, name: string, points: number, description: string) => {
+    const holidayTime = holidayDate.getTime();
+    const dayDiff = Math.abs(depTime - holidayTime) / (1000 * 60 * 60 * 24);
+    
+    if (dayDiff < 0.5) return { factor: points, description, severity: points >= 30 ? "Extreme" : points >= 20 ? "Very High" : "High" };
+    if (dayDiff < 1.5) return { factor: Math.round(points * 0.7), description: `Near ${description}`, severity: "High" };
+    if (dayDiff < 3) return { factor: Math.round(points * 0.4), description: `${name} week`, severity: "Moderate" };
+    return null;
+  };
+  
+  // Top 10 busiest (extreme surge)
+  const extremeSurge = [
+    [holidays.postThanksgivingSun, "Post-Thanksgiving Sunday", 35, "Busiest travel day of the year"],
+    [holidays.thanksgivingWed, "Thanksgiving Wednesday", 32, "Pre-Thanksgiving exodus"],
+    [holidays.thanksgivingTue, "Thanksgiving Tuesday", 30, "Thanksgiving week travel begins"],
+    [holidays.memorialFri, "Memorial Day Friday", 28, "Summer travel season kickoff"],
+    [holidays.july4Sun, "July 4th Sunday", 28, "Post-Independence Day returns"],
+    [holidays.postChristmas, "Day after Christmas", 26, "Post-holiday departures spike"],
+    [holidays.christmasWeekFri, "Christmas week Friday", 25, "Pre-Christmas travel rush"],
+    [holidays.laborFri, "Labor Day Friday", 24, "End of summer getaway rush"],
+    [holidays.laborMon, "Labor Day Monday", 23, "Labor Day return travel"],
+    [holidays.christmasEveEve, "December 23rd", 22, "Christmas Eve Eve travel"]
+  ];
+  
+  // High traffic days (11-30)
+  const highSurge = [
+    [holidays.july4Thu, "July 4th Thursday", 20, "Pre-July 4th departures"],
+    [holidays.christmasWeekSat, "Christmas week Saturday", 19, "Christmas week begins"],
+    [holidays.christmasWeekSun, "Christmas week Sunday", 18, "Pre-Christmas Sunday"],
+    [holidays.christmasWeekMon, "Christmas week Monday", 17, "Christmas week Monday"],
+    [holidays.postChristmasFri, "Post-Christmas Friday", 16, "Extended holiday travel"],
+    [holidays.postChristmasSun, "Post-Christmas Sunday", 15, "Holiday return travel"],
+    [holidays.postChristmasMon, "Post-Christmas Monday", 14, "Back to work travel"],
+    [holidays.dec30, "December 30th", 13, "Year-end return travel"],
+    [holidays.presidentsWeekFri, "Presidents Week Friday", 12, "Presidents Day weekend begins"],
+    [holidays.presidentsWeekSun, "Presidents Weekend Sunday", 11, "Presidents Day weekend"],
+    [holidays.presidentsMon, "Presidents Day", 10, "Presidents Day holiday"],
+    [holidays.easterThu, "Easter Thursday", 10, "Pre-Easter travel"],
+    [holidays.goodFriday, "Good Friday", 9, "Easter weekend begins"],
+    [holidays.easterMon, "Easter Monday", 8, "Easter return travel"]
+  ];
+  
+  // Canadian-specific
+  const canadianSurge = [
+    [holidays.canadianThanksgivingFri, "Canadian Thanksgiving Friday", 15, "Canadian Thanksgiving weekend"],
+    [holidays.canadianThanksgivingMon, "Canadian Thanksgiving", 12, "Canadian Thanksgiving returns"],
+    [holidays.victoriaMon, "Victoria Day", 10, "Victoria Day long weekend"]
+  ];
+  
+  // Check all surge periods
+  for (const [date, name, points, desc] of extremeSurge) {
+    const result = checkDate(date, name, points, desc);
+    if (result) return result;
+  }
+  
+  for (const [date, name, points, desc] of highSurge) {
+    const result = checkDate(date, name, points, desc);
+    if (result) return result;
+  }
+  
+  for (const [date, name, points, desc] of canadianSurge) {
+    const result = checkDate(date, name, points, desc);
+    if (result) return result;
+  }
+  
+  return { factor: 0, description: "Regular travel day", severity: "None" };
+}
+
+// Airline reliability database (based on 2023-2024 industry data)
+function getAirlineReliability(airlineCode: string): { points: number; description: string; reliability: string } {
+  const airlines: Record<string, { points: number; description: string; reliability: string }> = {
+    // North American - Worst Performers
+    "AC": { points: 20, description: "Air Canada - frequent delays and cancellations", reliability: "Poor" },
+    "WS": { points: 18, description: "WestJet - above-average delay rates", reliability: "Below Average" },
+    "F9": { points: 22, description: "Frontier - budget airline with high delay rates", reliability: "Poor" },
+    "NK": { points: 25, description: "Spirit Airlines - lowest reliability in US", reliability: "Very Poor" },
+    "B6": { points: 16, description: "JetBlue - moderate delay issues", reliability: "Below Average" },
+    "UA": { points: 14, description: "United Airlines - moderate reliability issues", reliability: "Below Average" },
+    "AA": { points: 12, description: "American Airlines - some delay issues", reliability: "Average" },
+    
+    // North American - Better Performers  
+    "DL": { points: 8, description: "Delta Airlines - above-average reliability", reliability: "Good" },
+    "AS": { points: 7, description: "Alaska Airlines - excellent punctuality", reliability: "Excellent" },
+    "WN": { points: 10, description: "Southwest - generally reliable", reliability: "Good" },
+    "TS": { points: 12, description: "Air Transat - seasonal reliability issues", reliability: "Average" },
+    
+    // International - European
+    "LH": { points: 6, description: "Lufthansa - excellent German efficiency", reliability: "Excellent" },
+    "KL": { points: 7, description: "KLM - very reliable Dutch carrier", reliability: "Excellent" },
+    "AF": { points: 10, description: "Air France - generally punctual", reliability: "Good" },
+    "BA": { points: 12, description: "British Airways - moderate reliability", reliability: "Average" },
+    "VS": { points: 8, description: "Virgin Atlantic - good reliability", reliability: "Good" },
+    "FR": { points: 15, description: "Ryanair - budget airline delays common", reliability: "Below Average" },
+    "U2": { points: 14, description: "easyJet - typical budget airline issues", reliability: "Below Average" },
+    
+    // International - Asian
+    "SQ": { points: 3, description: "Singapore Airlines - world-class reliability", reliability: "Outstanding" },
+    "NH": { points: 4, description: "ANA - exceptional Japanese punctuality", reliability: "Outstanding" },
+    "JL": { points: 4, description: "Japan Airlines - excellent reliability", reliability: "Outstanding" },
+    "CX": { points: 6, description: "Cathay Pacific - very reliable", reliability: "Excellent" },
+    "TG": { points: 8, description: "Thai Airways - good reliability", reliability: "Good" },
+    
+    // International - Middle Eastern
+    "EK": { points: 7, description: "Emirates - generally very reliable", reliability: "Excellent" },
+    "QR": { points: 6, description: "Qatar Airways - excellent punctuality", reliability: "Excellent" },
+    "EY": { points: 8, description: "Etihad Airways - good reliability", reliability: "Good" },
+    
+    // International - Other
+    "QF": { points: 9, description: "Qantas - good but some delays", reliability: "Good" },
+    "NZ": { points: 7, description: "Air New Zealand - very reliable", reliability: "Excellent" },
+    "LX": { points: 5, description: "Swiss International - excellent reliability", reliability: "Outstanding" }
+  };
+  
+  const airlineData = airlines[airlineCode?.toUpperCase()];
+  return airlineData || { points: 0, description: "Airline reliability data not available", reliability: "Unknown" };
+}
+
+// Group size delay factors
+function getGroupSizeDelay(groupSize: number): { points: number; description: string; impact: string } {
+  if (groupSize <= 2) {
+    return { points: 0, description: "Small group - no additional delays expected", impact: "None" };
+  } else if (groupSize <= 5) {
+    return { points: 8, description: "Medium group - coordination and check-in delays likely", impact: "Moderate" };
+  } else if (groupSize <= 10) {
+    return { points: 15, description: "Large group - significant coordination delays expected", impact: "High" };
+  } else {
+    return { points: 25, description: "Very large group - major delays for coordination and processing", impact: "Very High" };
+  }
+}
+
+function generateDelayRisk(result: any) {
+  const airport = result?.airport || "";
+  const departureISO = result?.departureLocalISO || "";
+  const isIntl = !!(result?.flags?.isInternational ?? result?.isInternational ?? (result?.flightType === "international"));
+  const airline = result?.airline || "";
+  const groupSize = result?.groupSize || result?.travelers || 1;
+  
+  if (!departureISO) {
+    return {
+      overallRisk: "Unknown",
+      riskScore: 0,
+      factors: [],
+      recommendations: ["Verify departure time for accurate delay prediction."]
+    };
+  }
+
+  // Use the provided departure time to avoid hydration mismatch
+  const depDate = new Date(departureISO);
+  if (isNaN(depDate.getTime())) {
+    return {
+      overallRisk: "Unknown", 
+      riskScore: 0,
+      factors: [],
+      recommendations: ["Invalid departure time provided."]
+    };
+  }
+  
+  const hour = depDate.getHours();
+  const dayOfWeek = depDate.getDay(); // 0 = Sunday, 6 = Saturday
+  const month = depDate.getMonth(); // 0 = January
+  
+  let riskScore = 0;
+  const factors = [];
+  
+  // Airport busyness factor (0-40 points)
+  const bus = result?.meta?.busyness;
+  if (bus?.score) {
+    const busynessPoints = Math.round(bus.score * 0.4); // 0-40 points
+    riskScore += busynessPoints;
+    factors.push({
+      factor: "Airport Traffic",
+      impact: bus.score >= 70 ? "High" : bus.score >= 40 ? "Moderate" : "Low",
+      description: `${bus.count || 0} departures in ±${bus.windowMin || 90} min window (${bus.score}% capacity)`,
+      points: busynessPoints
+    });
+  }
+  
+  // Time of day factor (0-25 points)
+  let timeRisk = 0;
+  let timeDesc = "";
+  if (hour >= 6 && hour < 9) {
+    timeRisk = 25;
+    timeDesc = "Morning rush hour - peak delay period";
+  } else if (hour >= 17 && hour < 20) {
+    timeRisk = 20;
+    timeDesc = "Evening rush hour - high delay risk";
+  } else if (hour >= 12 && hour < 17) {
+    timeRisk = 10;
+    timeDesc = "Afternoon - moderate delay risk";
+  } else if (hour >= 21 || hour < 6) {
+    timeRisk = 5;
+    timeDesc = "Off-peak hours - low delay risk";
+  } else {
+    timeRisk = 8;
+    timeDesc = "Mid-morning - moderate delay risk";
+  }
+  riskScore += timeRisk;
+  factors.push({
+    factor: "Departure Time",
+    impact: timeRisk >= 20 ? "High" : timeRisk >= 10 ? "Moderate" : "Low",
+    description: timeDesc,
+    points: timeRisk
+  });
+  
+  // Day of week factor (0-15 points)
+  let dayRisk = 0;
+  let dayDesc = "";
+  if (dayOfWeek === 1) { // Monday
+    dayRisk = 15;
+    dayDesc = "Monday - highest delay risk day";
+  } else if (dayOfWeek === 5) { // Friday  
+    dayRisk = 12;
+    dayDesc = "Friday - high delay risk";
+  } else if (dayOfWeek === 4) { // Thursday
+    dayRisk = 10;
+    dayDesc = "Thursday - moderate delay risk";
+  } else if (dayOfWeek === 0 || dayOfWeek === 6) { // Weekend
+    dayRisk = 5;
+    dayDesc = "Weekend - lower delay risk";
+  } else {
+    dayRisk = 8;
+    dayDesc = "Mid-week - moderate delay risk";
+  }
+  riskScore += dayRisk;
+  factors.push({
+    factor: "Day of Week",
+    impact: dayRisk >= 12 ? "High" : dayRisk >= 8 ? "Moderate" : "Low",
+    description: dayDesc,
+    points: dayRisk
+  });
+  
+  // Airport-specific factor (0-20 points)
+  const delayProneAirports = {
+    "LGA": { points: 20, desc: "LaGuardia - historically high delays" },
+    "EWR": { points: 18, desc: "Newark - frequent ATC delays" },
+    "JFK": { points: 15, desc: "JFK - large hub with congestion issues" },
+    "ORD": { points: 17, desc: "O'Hare - weather and volume delays common" },
+    "ATL": { points: 12, desc: "Atlanta - busiest airport, moderate delays" },
+    "LAX": { points: 14, desc: "LAX - traffic and runway constraints" },
+    "SFO": { points: 16, desc: "San Francisco - fog and traffic delays" },
+    "BOS": { points: 13, desc: "Boston - weather and congestion" },
+    "DCA": { points: 15, desc: "Reagan National - slot restrictions" },
+    "YYZ": { points: 10, desc: "Toronto Pearson - moderate delay risk" },
+    "YVR": { points: 8, desc: "Vancouver - weather delays possible" },
+    "YUL": { points: 9, desc: "Montreal - seasonal weather delays" }
+  };
+  
+  const airportFactor = delayProneAirports[airport as keyof typeof delayProneAirports];
+  if (airportFactor) {
+    riskScore += airportFactor.points;
+    factors.push({
+      factor: "Airport History",
+      impact: airportFactor.points >= 15 ? "High" : airportFactor.points >= 10 ? "Moderate" : "Low",
+      description: airportFactor.desc,
+      points: airportFactor.points
+    });
+  } else {
+    factors.push({
+      factor: "Airport History",
+      impact: "Low",
+      description: "No significant historical delay patterns",
+      points: 0
+    });
+  }
+  
+  // International flight factor (0-10 points)
+  if (isIntl) {
+    riskScore += 10;
+    factors.push({
+      factor: "Flight Type",
+      impact: "Moderate",
+      description: "International flight - additional processing delays possible",
+      points: 10
+    });
+  }
+  
+  // Weather/seasonal factor (0-15 points)
+  let weatherRisk = 0;
+  let weatherDesc = "";
+  if (month >= 11 || month <= 2) { // Winter months
+    weatherRisk = 15;
+    weatherDesc = "Winter season - snow and ice delays likely";
+  } else if (month >= 5 && month <= 8) { // Summer months
+    weatherRisk = 8;
+    weatherDesc = "Summer season - thunderstorm delays possible";
+  } else {
+    weatherRisk = 5;
+    weatherDesc = "Mild season - minimal weather delays expected";
+  }
+  riskScore += weatherRisk;
+  factors.push({
+    factor: "Seasonal Weather",
+    impact: weatherRisk >= 12 ? "High" : weatherRisk >= 8 ? "Moderate" : "Low",
+    description: weatherDesc,
+    points: weatherRisk
+  });
+  
+  // Holiday travel surge factor (0-35 points) 
+  const holidaySurge = getHolidaySurge(depDate);
+  if (holidaySurge.factor > 0) {
+    riskScore += holidaySurge.factor;
+    factors.push({
+      factor: "Holiday Travel Surge",
+      impact: holidaySurge.severity === "Extreme" ? "Extreme" : 
+              holidaySurge.severity === "Very High" ? "Very High" :
+              holidaySurge.severity === "High" ? "High" : "Moderate",
+      description: holidaySurge.description,
+      points: holidaySurge.factor
+    });
+  }
+  
+  // Airline reliability factor (0-25 points)
+  if (airline) {
+    const airlineReliability = getAirlineReliability(airline);
+    if (airlineReliability.points > 0) {
+      riskScore += airlineReliability.points;
+      factors.push({
+        factor: "Airline Reliability",
+        impact: airlineReliability.reliability === "Very Poor" ? "Very High" :
+                airlineReliability.reliability === "Poor" ? "High" :
+                airlineReliability.reliability === "Below Average" ? "Moderate" :
+                airlineReliability.reliability === "Average" ? "Low" : "Very Low",
+        description: airlineReliability.description,
+        points: airlineReliability.points
+      });
+    } else if (airlineReliability.points === 0 && airlineReliability.reliability === "Unknown") {
+      factors.push({
+        factor: "Airline Reliability",
+        impact: "Unknown",
+        description: airlineReliability.description,
+        points: 0
+      });
+    }
+  }
+  
+  // Group size factor (0-25 points)
+  const groupSizeDelay = getGroupSizeDelay(groupSize);
+  if (groupSizeDelay.points > 0) {
+    riskScore += groupSizeDelay.points;
+    factors.push({
+      factor: "Travel Group Size",
+      impact: groupSizeDelay.impact,
+      description: `${groupSize} travelers - ${groupSizeDelay.description}`,
+      points: groupSizeDelay.points
+    });
+  }
+  
+  // Calculate overall risk level and recommendations (adjusted for new factors)
+  let overallRisk = "";
+  let recommendations = [];
+  
+  if (riskScore >= 120) {
+    overallRisk = "Extreme";
+    recommendations = [
+      "Arrive at airport 3+ hours early",
+      "Strongly consider travel insurance",
+      "Have multiple backup travel plans", 
+      "Monitor conditions hourly before departure",
+      "Consider postponing non-essential travel"
+    ];
+  } else if (riskScore >= 90) {
+    overallRisk = "Very High";
+    recommendations = [
+      "Arrive at the airport extra early (2.5+ hours)",
+      "Consider travel insurance for this flight",
+      "Monitor weather and airport conditions closely",
+      "Have backup travel plans ready",
+      airline && getAirlineReliability(airline).points > 15 ? "Consider alternative airlines for future travel" : ""
+    ].filter(Boolean);
+  } else if (riskScore >= 60) {
+    overallRisk = "High";
+    recommendations = [
+      "Add extra buffer time to your schedule",
+      "Check in online and get mobile boarding passes", 
+      "Monitor flight status regularly",
+      "Consider earlier connections if applicable",
+      groupSize > 5 ? "Coordinate group arrival and check-in process in advance" : ""
+    ].filter(Boolean);
+  } else if (riskScore >= 35) {
+    overallRisk = "Moderate";
+    recommendations = [
+      "Follow standard arrival recommendations",
+      "Check flight status before leaving",
+      "Keep some flexibility in your schedule"
+    ];
+  } else {
+    overallRisk = "Low";
+    recommendations = [
+      "Standard procedures should be sufficient",
+      "Minimal risk of significant delays expected"
+    ];
+  }
+  
+  return {
+    overallRisk,
+    riskScore,
+    factors,
+    recommendations
+  };
+}
+
 
 function fmtDateTimeISO(iso?: string | null) {
   if (!iso) return "\u2014";
@@ -168,11 +668,10 @@ export default function ResultPage() {
       return d.toISOString();
     };
     const totalBack = numCheck + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12) + num(bd.contingencyMin, 8);
-    const arriveComp   = (timeline as any).arriveByISO ?? (result as any)?.arriveByLocalISO ?? (result as any)?.arriveAirportLocalISO ?? (depISO ? addMinISO(depISO, -totalBack) : null);
+    const arriveComp   = (timeline as any).arriveByISO ?? (result as any)?.arriveByLocalISO ?? (result as any)?.arriveAirportLocalISO ?? (result?.departureLocalISO ? addMinISO(result.departureLocalISO, -totalBack) : null);
     const checkInComp  = (timeline as any).checkInDoneISO ?? (arriveComp ? addMinISO(arriveComp,   numCheck) : null);
     const securityComp = (timeline as any).securityDoneISO ?? (arriveComp ? addMinISO(arriveComp,   numCheck + num(bd.securityWaitMin, 5)) : null);
-    const gateComp     = (timeline as any).gateByISO       ?? (arriveComp ? addMinISO(arriveComp,   numCheck + num(bd.securityWaitMin, 5) + num(bd.walkBufferMin, 12))
-                                                              : (depISO ? addMinISO(depISO, -num(bd.walkBufferMin, 12)) : null));
+    const gateComp     = (timeline as any).gateByISO       ?? (result?.departureLocalISO ? addMinISO(result.departureLocalISO, -25) : null); // Fixed: 25 minutes before departure
     timeline = { ...timeline,
       arriveByISO:    (timeline as any).arriveByISO    ?? arriveComp,
       checkInDoneISO: (timeline as any).checkInDoneISO ?? checkInComp,
@@ -205,6 +704,7 @@ export default function ResultPage() {
 
   const comfortLevels = useMemo(() => generateComfortLevels(result || {}), [result]);
   const analysis      = useMemo(() => generateAnalysis(result || {}), [result]);
+  const delayRisk     = useMemo(() => generateDelayRisk(result || {}), [result]);
   const buffers       = "Includes check-in, security, walk, and contingency.";
 
   if (!result) {
@@ -410,25 +910,48 @@ export default function ResultPage() {
                           <span>+{analysis.windowMinutes}m</span>
                         </div>
                         
-                        {/* Flight dots */}
-                        {Array.from({ length: Math.min(analysis.departuresInWindow, 20) }, (_, i) => {
-                          const position = Math.random() * 90 + 5; // Random position between 5% and 95%
-                          return (
-                            <div
-                              key={i}
-                              style={{
-                                position: "absolute",
-                                left: `${position}%`,
-                                width: "4px",
-                                height: "4px",
-                                background: "var(--accent)",
-                                borderRadius: "50%",
-                                boxShadow: "0 0 4px rgba(110,231,255,0.5)"
-                              }}
-                              title="Departure"
-                            />
-                          );
-                        })}
+                        {/* Flight dots - scaled representation */}
+                        {(() => {
+                          const totalFlights = analysis.departuresInWindow;
+                          const maxDots = 50; // Increased maximum for better representation
+                          const minDots = Math.min(totalFlights, 8); // Always show at least some dots for small numbers
+                          
+                          // Calculate how many dots to show
+                          let dotsToShow;
+                          if (totalFlights <= maxDots) {
+                            dotsToShow = totalFlights; // Show all if manageable
+                          } else {
+                            // For large numbers, show a representative sample
+                            dotsToShow = Math.max(minDots, Math.min(maxDots, Math.round(totalFlights * 0.4)));
+                          }
+                          
+                          return Array.from({ length: dotsToShow }, (_, i) => {
+                            // Distribute dots across the timeline with some clustering for realism
+                            const basePosition = 5 + (i * (90 / dotsToShow));
+                            const clusterVariation = ((i * 13) % 20) - 10; // -10 to +10 variation
+                            const position = Math.max(2, Math.min(98, basePosition + clusterVariation));
+                            
+                            // Vary dot sizes slightly for visual interest (larger = closer departure times)
+                            const dotSize = totalFlights > 30 ? (3 + (i % 3)) : 4;
+                            
+                            return (
+                              <div
+                                key={i}
+                                style={{
+                                  position: "absolute",
+                                  left: `${position}%`,
+                                  width: `${dotSize}px`,
+                                  height: `${dotSize}px`,
+                                  background: "var(--accent)",
+                                  borderRadius: "50%",
+                                  boxShadow: "0 0 3px rgba(110,231,255,0.4)",
+                                  opacity: totalFlights > 40 ? 0.8 : 1
+                                }}
+                                title={`Departure (${Math.round((position - 5) / 90 * analysis.windowMinutes * 2 - analysis.windowMinutes)}min from your flight)`}
+                              />
+                            );
+                          });
+                        })()}
                         
                         {/* Current time indicator */}
                         <div style={{
@@ -442,11 +965,26 @@ export default function ResultPage() {
                           transform: "translateX(-50%)"
                         }} />
                       </div>
-                      {analysis.departuresInWindow > 20 && (
-                        <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "4px", textAlign: "center" }}>
-                          Showing 20 of {analysis.departuresInWindow} flights
-                        </div>
-                      )}
+                      {(() => {
+                        const totalFlights = analysis.departuresInWindow;
+                        const maxDots = 50;
+                        const dotsShown = totalFlights <= maxDots ? totalFlights : Math.max(8, Math.min(maxDots, Math.round(totalFlights * 0.4)));
+                        
+                        if (totalFlights > maxDots) {
+                          return (
+                            <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "4px", textAlign: "center" }}>
+                              Showing {dotsShown} representative flights of {totalFlights} total
+                            </div>
+                          );
+                        } else if (totalFlights !== dotsShown) {
+                          return (
+                            <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "4px", textAlign: "center" }}>
+                              Showing {dotsShown} of {totalFlights} flights
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   )}
 
@@ -475,6 +1013,132 @@ export default function ResultPage() {
                       <p className="help" style={{ fontSize: "12px", margin: 0 }}>{item.reason}</p>
                     </div>
                   ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Delay Risk Assessment */}
+          {delayRisk && (
+            <section className="card">
+              <div className="card-inner">
+                <div className="kicker">Delay Risk Assessment</div>
+                <h3 style={{ margin: "6px 0 16px", fontSize: "18px" }}>Flight Delay Probability</h3>
+
+                <div style={{
+                  background: (() => {
+                    const risk = delayRisk.overallRisk.toLowerCase();
+                    if (risk.includes("extreme")) return "rgba(139, 0, 0, 0.2)";
+                    if (risk.includes("very high")) return "rgba(255, 107, 107, 0.15)";
+                    if (risk.includes("high")) return "rgba(255, 202, 87, 0.15)";  
+                    if (risk.includes("moderate")) return "rgba(110, 231, 255, 0.15)";
+                    return "rgba(72, 219, 251, 0.1)";
+                  })(),
+                  border: (() => {
+                    const risk = delayRisk.overallRisk.toLowerCase();
+                    if (risk.includes("extreme")) return "1px solid rgba(139, 0, 0, 0.4)";
+                    if (risk.includes("very high")) return "1px solid rgba(255, 107, 107, 0.3)";
+                    if (risk.includes("high")) return "1px solid rgba(255, 202, 87, 0.3)";  
+                    if (risk.includes("moderate")) return "1px solid rgba(110, 231, 255, 0.3)";
+                    return "1px solid rgba(72, 219, 251, 0.2)";
+                  })(),
+                  borderRadius: "12px",
+                  padding: "20px",
+                  marginBottom: "16px"
+                }}>
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                    <div>
+                      <div style={{ 
+                        color: (() => {
+                          const risk = delayRisk.overallRisk.toLowerCase();
+                          if (risk.includes("extreme")) return "#8b0000";
+                          if (risk.includes("very high")) return "#ff6b6b";
+                          if (risk.includes("high")) return "#feca57";  
+                          if (risk.includes("moderate")) return "var(--accent)";
+                          return "#48dbfb";
+                        })(), 
+                        fontWeight: 700, 
+                        fontSize: "24px" 
+                      }}>
+                        {delayRisk.overallRisk} Risk
+                      </div>
+                      <div style={{ color: "var(--muted)", fontSize: "14px", marginTop: "4px" }}>
+                        Risk Score: {delayRisk.riskScore}/100
+                      </div>
+                    </div>
+                    <div style={{
+                      width: "80px",
+                      height: "80px",
+                      borderRadius: "50%",
+                      background: `conic-gradient(${(() => {
+                        const risk = delayRisk.overallRisk.toLowerCase();
+                        if (risk.includes("extreme")) return "#8b0000";
+                        if (risk.includes("very high")) return "#ff6b6b";
+                        if (risk.includes("high")) return "#feca57";  
+                        if (risk.includes("moderate")) return "var(--accent)";
+                        return "#48dbfb";
+                      })()} ${delayRisk.riskScore * 3.6}deg, rgba(255,255,255,0.1) 0deg)`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "white",
+                      fontWeight: 700,
+                      fontSize: "16px"
+                    }}>
+                      {delayRisk.riskScore}
+                    </div>
+                  </div>
+
+                  {/* Risk Factors */}
+                  <div style={{ marginBottom: "16px" }}>
+                    <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)", marginBottom: "12px" }}>
+                      Contributing Factors
+                    </div>
+                    <div className="grid grid-2" style={{ gap: "8px" }}>
+                      {delayRisk.factors.map((factor: any, i: number) => (
+                        <div key={i} style={{
+                          background: "rgba(255,255,255,0.05)",
+                          border: "1px solid rgba(255,255,255,0.1)",
+                          borderRadius: "8px",
+                          padding: "12px"
+                        }}>
+                          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px" }}>
+                            <span style={{ fontWeight: 600, fontSize: "13px" }}>{factor.factor}</span>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ 
+                                color: factor.impact === "Extreme" ? "#8b0000" :
+                                       factor.impact === "Very High" ? "#cc0000" :
+                                       factor.impact === "High" ? "#ff6b6b" : 
+                                       factor.impact === "Moderate" ? "#feca57" : "#48dbfb",
+                                fontWeight: 600,
+                                fontSize: "11px"
+                              }}>
+                                {factor.impact}
+                              </div>
+                              <div style={{ color: "var(--muted)", fontSize: "10px" }}>
+                                +{factor.points}
+                              </div>
+                            </div>
+                          </div>
+                          <p style={{ fontSize: "11px", color: "var(--muted)", margin: 0, lineHeight: 1.3 }}>
+                            {factor.description}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Recommendations */}
+                  <div>
+                    <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)", marginBottom: "8px" }}>
+                      Recommendations
+                    </div>
+                    <ul style={{ margin: "0", paddingLeft: "16px", color: "var(--muted)", fontSize: "13px" }}>
+                      {delayRisk.recommendations.map((rec: string, i: number) => (
+                        <li key={i} style={{ marginBottom: "4px" }}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               </div>
             </section>
