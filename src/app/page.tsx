@@ -345,14 +345,14 @@ export default function HomePage(){
           <div className="card-inner">
             <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 8 }}>
               <Link href="/profile" className="btn btn-secondary">Profile</Link>
-              <Link href="/flight" className="btn btn-secondary">Flights</Link>
             </div>
             <div className="kicker">Plan</div>
-            <h1>Calculate your airport arrival time</h1>
-            <p className="sub">We combine security waits, airline policies and smart buffers to recommend when to arrive. You can still prefill with a flight number below.</p>
+            <h1>When is your flight?</h1>
+            <p className="sub">We combine security waits, airline policies and smart buffers to recommend when to arrive.</p>
 
             <form className="grid" onSubmit={(e)=>{ e.preventDefault(); trackFlight(); }}>
-              <div className="grid grid-3">
+              {/* Flight Info */}
+              <div className="grid grid-2">
                 <div>
                   <label className="label" htmlFor="flightNumberTop">Flight number</label>
                   <input id="flightNumberTop" name="flightNumber" placeholder="e.g., AC123" className="input" value={form.flightNumber} onChange={onChange} aria-describedby="flightLookupHelp" />
@@ -361,19 +361,13 @@ export default function HomePage(){
                   <label className="label" htmlFor="flightDateTop">Flight date</label>
                   <input id="flightDateTop" type="date" className="input" placeholder="YYYY-MM-DD" value={flightDate} onChange={(e)=> setFlightDate(e.target.value)} />
                 </div>
-                <div style={{ display:"flex", alignItems:"flex-end" }}>
-                  <button type="submit" className="btn" style={{ width:"100%" }}>Calculate arrive time</button>
-                </div>
               </div>
-              {(lookupMsg || lookupErr) && <p id="flightLookupHelp" className="help" style={{marginTop:8, color: lookupErr? '#fecaca': undefined}}>{lookupErr || lookupMsg}</p>}
 
-              <div className="divider"></div>
-
-              {/* Travel options */}
+              {/* Travel Options */}
               <div className="grid grid-2">
                 <Select
                   id="travelParty"
-                  label="Travel party"
+                  label="Travel party size"
                   value={form.travelParty || "solo"}
                   onChange={(v)=> setForm(prev=>({ ...prev, travelParty: v as FormState["travelParty"] }))}
                   options={[
@@ -397,6 +391,7 @@ export default function HomePage(){
                 />
               </div>
 
+              {/* Bag and Check-in Status */}
               <div className="grid grid-2">
                 <label className="check">
                   <input type="checkbox" name="alreadyCheckedIn" checked={form.alreadyCheckedIn} onChange={onChange} />
@@ -407,59 +402,53 @@ export default function HomePage(){
                   <div>Checking a bag<div className="hint">Adds time for bag-drop / check-in</div></div>
                 </label>
               </div>
+
+              {/* Submit Button */}
+              <div style={{ display:"flex", justifyContent:"center", marginTop: 16 }}>
+                <button type="submit" className="btn" style={{ padding: '14px 24px', minWidth: '200px' }}>Get arrival time</button>
+              </div>
+
+              {(lookupMsg || lookupErr) && <p id="flightLookupHelp" className="help" style={{marginTop:8, color: lookupErr? '#fecaca': undefined, textAlign: 'center'}}>{lookupErr || lookupMsg}</p>}
             </form>
 
             {recents.length > 0 && (
-              <div className="row" style={{ marginTop: 10 }}>
-                <span className="label" style={{ marginBottom: 0 }}>Recent</span>
-                {recents.map((r, idx) => (
-                  <button key={idx} className="chip" type="button" onClick={()=>{
-                    setForm(prev=>({ ...prev, flightNumber: r.flight }));
-                    // Use stored values immediately - note: recent flights don't have full route info
-                    goToCalculating({ airline: r.airline, airport: r.airport, departureLocalISO: r.departureLocalISO, isInternational: r.isInternational, flight: r.flight });
-                  }} title={`${r.flight} · ${r.airport || ''} · ${r.departureLocalISO ? new Date(r.departureLocalISO).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ''}`}>
-                    {r.flight}
-                  </button>
-                ))}
+              <div style={{ marginTop: 16 }}>
+                <div className="divider"></div>
+                <div className="row" style={{ marginTop: 10 }}>
+                  <span className="label" style={{ marginBottom: 0 }}>Recent flights</span>
+                  {recents.map((r, idx) => (
+                    <button key={idx} className="chip" type="button" onClick={()=>{
+                      setForm(prev=>({ ...prev, flightNumber: r.flight }));
+                      // Use stored values immediately - note: recent flights don't have full route info
+                      goToCalculating({ airline: r.airline, airport: r.airport, departureLocalISO: r.departureLocalISO, isInternational: r.isInternational, flight: r.flight });
+                    }} title={`${r.flight} · ${r.airport || ''} · ${r.departureLocalISO ? new Date(r.departureLocalISO).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ''}`}>
+                      {r.flight}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
-            <div className="divider"></div>
-
-            <div className="footer-row">
-              <button type="button" className="btn btn-secondary" onClick={()=>{
-                setForm({
-                  airport:"",
-                  airline:"",
-                  departureLocal:"",
-                  checkedBag:false,
-                  hasNexus:false,
-                  isInternational:false,
-                  flightNumber:"",
-                  alreadyCheckedIn:false,
-                  travelParty:"solo",
-                  walkingPace:"normal",
-                });
-                setFlightDate("");
-              }}>Clear</button>
-              <button type="button" className="btn btn-secondary" onClick={saveProfile}>Save defaults</button>
-              <button type="button" className="btn btn-secondary" onClick={clearProfile}>Clear defaults</button>
-            </div>
-
-            <div className="divider"></div>
-            <div className="divider"></div>
-            <div className="row" style={{ justifyContent: 'center', gap: 12, margin: '20px 0' }}>
-              <Link href="/flight" className="btn btn-secondary" style={{ padding: '14px 18px' }}>
-                Open Flight Details
-              </Link>
-              <button type="button" className="btn" onClick={() => router.push('/trip/1')} style={{ padding: '14px 18px' }}>
-                Live Tracking Demo (sample)
-              </button>
-            </div>
-            
-            <div className="row">
-              <div className="lozenge">Secure · No data shared</div>
-              <div className="lozenge">Unified look across all pages</div>
+            <div style={{ marginTop: 24 }}>
+              <div className="divider"></div>
+              <div className="footer-row">
+                <button type="button" className="btn btn-secondary" onClick={()=>{
+                  setForm({
+                    airport:"",
+                    airline:"",
+                    departureLocal:"",
+                    checkedBag:false,
+                    hasNexus:false,
+                    isInternational:false,
+                    flightNumber:"",
+                    alreadyCheckedIn:false,
+                    travelParty:"solo",
+                    walkingPace:"normal",
+                  });
+                  setFlightDate("");
+                }}>Clear form</button>
+                <button type="button" className="btn btn-secondary" onClick={saveProfile}>Save as default</button>
+              </div>
             </div>
           </div>
         </div>

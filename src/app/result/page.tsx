@@ -902,6 +902,82 @@ function ResultPageContent() {
                 <button className="btn btn-secondary" onClick={() => setShowRaw(v => !v)}>
                   {showRaw ? "Hide raw output" : "View raw output"}
                 </button>
+                <button className="btn btn-secondary" onClick={() => {
+                  // Save flight to profile
+                  const flightData = {
+                    id: `${result?.flightNumber || 'unknown'}-${new Date(result?.departureLocalISO || Date.now()).toISOString().split('T')[0]}`,
+                    flightNumber: result?.flightNumber || '',
+                    airline: result?.airline || result?.airlineName || '',
+                    departure: {
+                      airport: result?.route?.departure?.airport || result?.airport || '',
+                      city: result?.route?.departure?.city || '',
+                      time: result?.route?.departure?.scheduledLocalISO || result?.departureLocalISO || '',
+                      terminal: result?.route?.departure?.terminal || '',
+                      gate: result?.route?.departure?.gate || ''
+                    },
+                    arrival: {
+                      airport: result?.route?.arrival?.airport || '',
+                      city: result?.route?.arrival?.city || '',
+                      time: result?.route?.arrival?.scheduledLocalISO || '',
+                      terminal: result?.route?.arrival?.terminal || '',
+                      gate: result?.route?.arrival?.gate || ''
+                    },
+                    status: new Date(result?.departureLocalISO || Date.now()) > new Date() ? 'upcoming' : 'completed',
+                    aircraft: result?.aircraft?.type || '',
+                    isInternational: result?.isInternational || false,
+                    savedAt: Date.now(),
+                    // Save the arrival calculation results
+                    arrivalRecommendation: {
+                      suggested: result?.leaveByLocalISO || result?.bands?.normalArriveLocalISO,
+                      risky: result?.bands?.aggressiveArriveLocalISO,
+                      moderate: result?.bands?.normalArriveLocalISO,
+                      cautious: result?.bands?.cautiousArriveLocalISO
+                    }
+                  };
+
+                  try {
+                    const existing = localStorage.getItem('depart:savedFlights');
+                    const flights = existing ? JSON.parse(existing) : [];
+
+                    // Remove any existing flight with same ID
+                    const filtered = flights.filter((f: any) => f.id !== flightData.id);
+
+                    // Add the new flight
+                    filtered.unshift(flightData);
+
+                    // Keep only the most recent 20 flights
+                    const limited = filtered.slice(0, 20);
+
+                    localStorage.setItem('depart:savedFlights', JSON.stringify(limited));
+
+                    // Show success feedback
+                    const btn = event?.target as HTMLButtonElement;
+                    if (btn) {
+                      const originalText = btn.textContent;
+                      btn.textContent = '✓ Saved!';
+                      btn.style.backgroundColor = 'rgba(81,207,102,0.2)';
+                      btn.style.borderColor = 'rgba(81,207,102,0.4)';
+                      setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.style.backgroundColor = '';
+                        btn.style.borderColor = '';
+                      }, 2000);
+                    }
+                  } catch (error) {
+                    console.error('Failed to save flight:', error);
+                    // Show error feedback
+                    const btn = event?.target as HTMLButtonElement;
+                    if (btn) {
+                      const originalText = btn.textContent;
+                      btn.textContent = '❌ Failed';
+                      setTimeout(() => {
+                        btn.textContent = originalText;
+                      }, 2000);
+                    }
+                  }
+                }}>
+                  Save to Profile
+                </button>
                 <Link className="btn" href="/">Plan another flight</Link>
               </div>
             </div>
@@ -910,26 +986,78 @@ function ResultPageContent() {
           {/* Comfort Level Cards */}
           {comfortLevels && (
             <section className="grid grid-3">
-              <div className="card">
+              {/* Risky Card - Red Theme */}
+              <div className="card" style={{
+                background: "linear-gradient(180deg, rgba(255,107,107,0.12), rgba(255,107,107,0.08))",
+                border: "1px solid rgba(255,107,107,0.25)",
+                boxShadow: "0 10px 30px rgba(255,107,107,0.15), 0 0 0 1px rgba(255,107,107,0.1) inset"
+              }}>
                 <div className="card-inner">
-                  <div className="kicker" style={{ color: "#ff6b6b" }}>Risky</div>
-                  <div className="time-big" suppressHydrationWarning style={{ fontSize: "32px" }}>{comfortLevels.risky.time}</div>
+                  <div className="kicker" style={{ color: "#ff6b6b", fontWeight: 600 }}>⚡ Risky</div>
+                  <div className="time-big" suppressHydrationWarning style={{
+                    fontSize: "32px",
+                    background: "linear-gradient(135deg, #ff6b6b, #ff5252)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text"
+                  }}>{comfortLevels.risky.time}</div>
                   <p className="help" style={{ marginTop: 4 }} suppressHydrationWarning>{bufferTextFor(heroISO)}</p>
                   <p className="help" style={{ fontSize: "12px", marginTop: 8 }}>{comfortLevels.risky.description}</p>
                 </div>
               </div>
-              <div className="card" style={{ border: "2px solid var(--accent)" }}>
+
+              {/* Moderate Card - Blue Theme (Recommended) */}
+              <div className="card" style={{
+                background: "linear-gradient(180deg, rgba(110,231,255,0.15), rgba(110,231,255,0.10))",
+                border: "2px solid var(--accent)",
+                boxShadow: "0 10px 30px rgba(110,231,255,0.25), 0 0 0 1px rgba(110,231,255,0.2) inset",
+                position: "relative"
+              }}>
                 <div className="card-inner">
-                  <div className="kicker" style={{ color: "var(--accent)" }}>Moderate</div>
-                  <div className="time-big" suppressHydrationWarning style={{ fontSize: "32px" }}>{comfortLevels.moderate.time}</div>
+                  <div className="kicker" style={{ color: "var(--accent)", fontWeight: 600 }}>⭐ Moderate</div>
+                  <div className="time-big" suppressHydrationWarning style={{
+                    fontSize: "32px",
+                    background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text"
+                  }}>{comfortLevels.moderate.time}</div>
                   <p className="help" style={{ marginTop: 4 }} suppressHydrationWarning>{bufferTextFor(heroISO)}</p>
                   <p className="help" style={{ fontSize: "12px", marginTop: 8 }}>{comfortLevels.moderate.description}</p>
+                  {/* Recommended badge */}
+                  <div style={{
+                    position: "absolute",
+                    top: "-8px",
+                    right: "12px",
+                    background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+                    color: "#001118",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    padding: "4px 8px",
+                    borderRadius: "12px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px"
+                  }}>
+                    Recommended
+                  </div>
                 </div>
               </div>
-              <div className="card">
+
+              {/* Cautious Card - Green Theme */}
+              <div className="card" style={{
+                background: "linear-gradient(180deg, rgba(81,207,102,0.12), rgba(81,207,102,0.08))",
+                border: "1px solid rgba(81,207,102,0.25)",
+                boxShadow: "0 10px 30px rgba(81,207,102,0.15), 0 0 0 1px rgba(81,207,102,0.1) inset"
+              }}>
                 <div className="card-inner">
-                  <div className="kicker" style={{ color: "#51cf66" }}>Cautious</div>
-                  <div className="time-big" suppressHydrationWarning style={{ fontSize: "32px" }}>{comfortLevels.cautious.time}</div>
+                  <div className="kicker" style={{ color: "#51cf66", fontWeight: 600 }}>🛡️ Cautious</div>
+                  <div className="time-big" suppressHydrationWarning style={{
+                    fontSize: "32px",
+                    background: "linear-gradient(135deg, #51cf66, #40c057)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text"
+                  }}>{comfortLevels.cautious.time}</div>
                   <p className="help" style={{ marginTop: 4 }} suppressHydrationWarning>{bufferTextFor(heroISO)}</p>
                   <p className="help" style={{ fontSize: "12px", marginTop: 8 }}>{comfortLevels.cautious.description}</p>
                 </div>
@@ -1331,6 +1459,142 @@ function ResultPageContent() {
               </div>
             </div>
           </section>
+
+          {/* Flight Details Card */}
+          {(() => {
+            const route = result?.route;
+            const departure = route?.departure;
+            const arrival = route?.arrival;
+            const aircraft = result?.aircraft;
+            const status = result?.status;
+            const flightNumber = result?.flightNumber;
+            const airline = result?.airline || result?.airlineName;
+
+            if (!flightNumber) return null;
+
+            return (
+              <section className="card">
+                <div className="card-inner">
+                  <div className="kicker">Flight Details</div>
+                  <h3 style={{ margin: "6px 0 16px", fontSize: "18px" }}>
+                    {airline} {flightNumber}
+                  </h3>
+
+                  <div className="grid grid-2" style={{ gap: "16px" }}>
+                    {/* Departure Info */}
+                    <div style={{
+                      background: "rgba(110,231,255,0.08)",
+                      border: "1px solid rgba(110,231,255,0.2)",
+                      borderRadius: "12px",
+                      padding: "16px"
+                    }}>
+                      <div className="kicker" style={{ color: "var(--accent)", marginBottom: "8px" }}>Departure</div>
+                      <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "8px" }}>
+                        {departure?.airport || result?.airport || "—"}
+                      </div>
+                      <div style={{ marginBottom: "12px" }}>
+                        <div style={{ fontSize: "16px", fontWeight: 500, marginBottom: "4px" }}>
+                          {departure?.scheduledLocalISO ? fmtTimeISOStable(departure.scheduledLocalISO) : "—"}
+                        </div>
+                        <div className="help" style={{ fontSize: "13px" }}>
+                          {departure?.scheduledLocalISO ? fmtDateTimeISO(departure.scheduledLocalISO) : "—"}
+                        </div>
+                      </div>
+                      {departure?.terminal && (
+                        <div className="row" style={{ gap: "12px", fontSize: "13px" }}>
+                          <div>
+                            <span style={{ color: "var(--muted)" }}>Terminal:</span>
+                            <span style={{ fontWeight: 600, marginLeft: "4px" }}>{departure.terminal}</span>
+                          </div>
+                          {departure?.gate && (
+                            <div>
+                              <span style={{ color: "var(--muted)" }}>Gate:</span>
+                              <span style={{ fontWeight: 600, marginLeft: "4px" }}>{departure.gate}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Arrival Info */}
+                    <div style={{
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: "12px",
+                      padding: "16px"
+                    }}>
+                      <div className="kicker" style={{ marginBottom: "8px" }}>Arrival</div>
+                      <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "8px" }}>
+                        {arrival?.airport || "—"}
+                      </div>
+                      <div style={{ marginBottom: "12px" }}>
+                        <div style={{ fontSize: "16px", fontWeight: 500, marginBottom: "4px" }}>
+                          {arrival?.scheduledLocalISO ? fmtTimeISOStable(arrival.scheduledLocalISO) : "—"}
+                        </div>
+                        <div className="help" style={{ fontSize: "13px" }}>
+                          {arrival?.scheduledLocalISO ? fmtDateTimeISO(arrival.scheduledLocalISO) : "—"}
+                        </div>
+                      </div>
+                      {arrival?.terminal && (
+                        <div className="row" style={{ gap: "12px", fontSize: "13px" }}>
+                          <div>
+                            <span style={{ color: "var(--muted)" }}>Terminal:</span>
+                            <span style={{ fontWeight: 600, marginLeft: "4px" }}>{arrival.terminal}</span>
+                          </div>
+                          {arrival?.gate && (
+                            <div>
+                              <span style={{ color: "var(--muted)" }}>Gate:</span>
+                              <span style={{ fontWeight: 600, marginLeft: "4px" }}>{arrival.gate}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Additional Flight Info */}
+                  <div style={{ marginTop: "16px" }}>
+                    <div className="row" style={{ gap: "16px", flexWrap: "wrap" }}>
+                      {status && (
+                        <div className="chip" style={{
+                          backgroundColor: status.toLowerCase() === 'scheduled' ? 'rgba(110,231,255,0.1)' :
+                                          status.toLowerCase() === 'delayed' ? 'rgba(255,107,107,0.1)' :
+                                          status.toLowerCase() === 'cancelled' ? 'rgba(255,107,107,0.15)' :
+                                          'rgba(255,255,255,0.05)',
+                          borderColor: status.toLowerCase() === 'scheduled' ? 'rgba(110,231,255,0.3)' :
+                                      status.toLowerCase() === 'delayed' ? 'rgba(255,107,107,0.3)' :
+                                      status.toLowerCase() === 'cancelled' ? 'rgba(255,107,107,0.4)' :
+                                      'rgba(255,255,255,0.1)'
+                        }}>
+                          Status: <strong style={{ textTransform: 'capitalize' }}>{status}</strong>
+                        </div>
+                      )}
+                      {aircraft?.type && (
+                        <div className="chip">
+                          Aircraft: <strong>{aircraft.type}</strong>
+                        </div>
+                      )}
+                      {(() => {
+                        const depTime = departure?.scheduledLocalISO ? new Date(departure.scheduledLocalISO) : null;
+                        const arrTime = arrival?.scheduledLocalISO ? new Date(arrival.scheduledLocalISO) : null;
+                        if (depTime && arrTime) {
+                          const durationMs = arrTime.getTime() - depTime.getTime();
+                          const hours = Math.floor(durationMs / (1000 * 60 * 60));
+                          const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+                          return (
+                            <div className="chip">
+                              Duration: <strong>{hours}h {minutes}m</strong>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            );
+          })()}
 
           {showRaw && (
             <section className="card">
