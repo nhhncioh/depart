@@ -101,15 +101,23 @@ function CalculatingPageContent() {
 
         <div className="card card-lg">
           <div className="card-inner" style={{ display: 'grid', placeItems: 'center', textAlign: 'center', gap: 16 }}>
-            <div style={{ width: '100%', maxWidth: 520, height: 320, position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{
+              width: '100%',
+              maxWidth: 520,
+              height: 'clamp(200px, 50vw, 320px)',
+              position: 'relative',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}>
               {/* Airplane window frame */}
               <div style={{
-                width: '220px',
-                height: '300px',
+                width: 'clamp(140px, 35vw, 220px)',
+                height: 'clamp(180px, 45vw, 300px)',
                 position: 'relative',
-                borderRadius: '75px',
+                borderRadius: 'clamp(40px, 10vw, 75px)',
                 background: 'linear-gradient(145deg, #2a2a2a 0%, #1a1a1a 50%, #0a0a0a 100%)',
-                padding: '20px',
+                padding: 'clamp(12px, 3vw, 20px)',
                 boxShadow: 'inset 0 0 30px rgba(0,0,0,0.8), inset 0 0 60px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.3)',
               }}>
 
@@ -117,9 +125,9 @@ function CalculatingPageContent() {
                 <div style={{
                   width: '100%',
                   height: '100%',
-                  borderRadius: '60px',
+                  borderRadius: 'clamp(30px, 8vw, 60px)',
                   background: 'linear-gradient(145deg, #404040 0%, #202020 50%, #101010 100%)',
-                  padding: '12px',
+                  padding: 'clamp(8px, 2vw, 12px)',
                   boxShadow: 'inset 0 0 25px rgba(0,0,0,0.6)',
                 }}>
 
@@ -127,7 +135,7 @@ function CalculatingPageContent() {
                   <div style={{
                     width: '100%',
                     height: '100%',
-                    borderRadius: '50px',
+                    borderRadius: 'clamp(25px, 6vw, 50px)',
                     position: 'relative',
                     overflow: 'hidden',
                     background: 'linear-gradient(180deg, #001122 0%, #001a33 30%, #002a4a 70%, #003d66 100%)',
@@ -292,11 +300,11 @@ function CalculatingPageContent() {
                 {/* Additional window seal details */}
                 <div style={{
                   position: 'absolute',
-                  top: '10px',
-                  left: '10px',
-                  right: '10px',
-                  bottom: '10px',
-                  borderRadius: '68px',
+                  top: 'clamp(6px, 1.5vw, 10px)',
+                  left: 'clamp(6px, 1.5vw, 10px)',
+                  right: 'clamp(6px, 1.5vw, 10px)',
+                  bottom: 'clamp(6px, 1.5vw, 10px)',
+                  borderRadius: 'clamp(35px, 9vw, 68px)',
                   border: '1px solid rgba(255,255,255,0.08)',
                   pointerEvents: 'none',
                   zIndex: 5,

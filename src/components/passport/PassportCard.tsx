@@ -73,7 +73,7 @@ export default function PassportCard({ stats, routesForMap, airportsInUse, usern
         </div>
 
         {/* World Map */}
-        <div className="h-56 md:h-64 mb-6 rounded-xl overflow-hidden">
+        <div className="h-72 md:h-80 lg:h-64 mb-6 rounded-xl overflow-hidden">
           <WorldMap routes={routesForMap} airportsInUse={airportsInUse} className="h-full" />
         </div>
 
