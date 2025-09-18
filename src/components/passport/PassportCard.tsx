@@ -50,13 +50,13 @@ export default function PassportCard({ stats, routesForMap, airportsInUse, usern
           <p className="text-white/70 text-sm">Your journey mapped out</p>
         </div>
 
-        {/* Large mobile map - takes most of viewport */}
-        <div className="h-screen-75 mb-6 rounded-xl overflow-hidden bg-black/20 -mx-4">
+        {/* Large mobile map - breaks out of container */}
+        <div className="mobile-fullwidth-map mb-3 bg-black/20">
           <WorldMap routes={routesForMap} airportsInUse={airportsInUse} className="h-full w-full" />
         </div>
 
         {/* Country flags */}
-        <div className="flex gap-2 overflow-x-auto pb-4 mb-6" style={{ scrollbarWidth: "thin" }}>
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-4" style={{ scrollbarWidth: "thin" }}>
           {stats.countriesVisited.map((country) => (
             <span key={country} className="text-3xl flex-shrink-0" title={country}>
               {getCountryFlag(country)}
@@ -65,7 +65,7 @@ export default function PassportCard({ stats, routesForMap, airportsInUse, usern
         </div>
 
         {/* Clean mobile stats grid */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-white/5 rounded-lg p-4 text-center">
             <div className="text-2xl font-bold text-white mb-1">{stats.totalFlights.toLocaleString()}</div>
             <div className="text-sm text-white/60">Flights</div>

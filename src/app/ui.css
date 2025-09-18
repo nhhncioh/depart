@@ -64,7 +64,23 @@ body{
 .grid-3{ grid-template-columns: repeat(3, minmax(0,1fr)); }
 
 /* Mobile map utilities */
-.h-screen-75 { height: 75vh; }
+.mobile-fullwidth-map {
+  height: 70vh;
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  border-radius: 0;
+  z-index: 1;
+}
+
+/* Ensure profile cards have higher z-index than the breakout map */
+.profile-root .card {
+  position: relative;
+  z-index: 10;
+}
 
 @media (max-width: 820px){
   .grid-2{ grid-template-columns:1fr; }
