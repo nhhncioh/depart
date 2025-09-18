@@ -1535,16 +1535,24 @@ function ResultPageContent() {
                           {arrival?.scheduledLocalISO ? fmtDateTimeISO(arrival.scheduledLocalISO) : "—"}
                         </div>
                       </div>
-                      {arrival?.terminal && (
-                        <div className="row" style={{ gap: "12px", fontSize: "13px" }}>
-                          <div>
-                            <span style={{ color: "var(--muted)" }}>Terminal:</span>
-                            <span style={{ fontWeight: 600, marginLeft: "4px" }}>{arrival.terminal}</span>
-                          </div>
+                      {(arrival?.terminal || arrival?.gate || arrival?.carousel) && (
+                        <div className="row" style={{ gap: "12px", fontSize: "13px", flexWrap: "wrap" }}>
+                          {arrival?.terminal && (
+                            <div>
+                              <span style={{ color: "var(--muted)" }}>Terminal:</span>
+                              <span style={{ fontWeight: 600, marginLeft: "4px" }}>{arrival.terminal}</span>
+                            </div>
+                          )}
                           {arrival?.gate && (
                             <div>
                               <span style={{ color: "var(--muted)" }}>Gate:</span>
                               <span style={{ fontWeight: 600, marginLeft: "4px" }}>{arrival.gate}</span>
+                            </div>
+                          )}
+                          {arrival?.carousel && (
+                            <div>
+                              <span style={{ color: "var(--muted)" }}>Carousel:</span>
+                              <span style={{ fontWeight: 600, marginLeft: "4px" }}>{arrival.carousel}</span>
                             </div>
                           )}
                         </div>

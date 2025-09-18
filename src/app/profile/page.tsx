@@ -234,11 +234,53 @@ export default function ProfilePage() {
 
   const passportFlights = getUserFlights();
   const passportStats = computePassportStats(passportFlights);
-  const routesForMap = passportStats.routes
+
+  // Combine routes from both passport data AND saved flights for the map
+  const savedFlightRoutes = new Map<string, number>();
+
+  // Add routes from completed saved flights
+  flights
+    .filter(f => f.status === 'completed' && f.departure.airport && f.arrival.airport)
+    .forEach(flight => {
+      const routeKey = `${flight.departure.airport}-${flight.arrival.airport}`;
+      savedFlightRoutes.set(routeKey, (savedFlightRoutes.get(routeKey) || 0) + 1);
+    });
+
+  // Combine passport routes with saved flight routes
+  const combinedRoutes = new Map<string, { from: string; to: string; count: number }>();
+
+  // Add passport routes
+  passportStats.routes.forEach(route => {
+    const key = `${route.from}-${route.to}`;
+    combinedRoutes.set(key, route);
+  });
+
+  // Add or update with saved flight routes
+  savedFlightRoutes.forEach((count, routeKey) => {
+    const [from, to] = routeKey.split('-');
+    const existing = combinedRoutes.get(routeKey);
+    if (existing) {
+      existing.count += count;
+    } else {
+      combinedRoutes.set(routeKey, { from, to, count });
+    }
+  });
+
+  const routesForMap = Array.from(combinedRoutes.values())
+    .sort((a, b) => b.count - a.count)
     .slice(0, 50)
     .map((r) => ({ fromIata: r.from, toIata: r.to, value: r.count }));
+
+  // Include airports from both passport AND saved flights
+  const savedFlightAirports = flights
+    .filter(f => f.departure.airport && f.arrival.airport)
+    .flatMap(f => [f.departure.airport, f.arrival.airport]);
+
   const airportsInUse = Array.from(
-    new Set(passportFlights.flatMap((f) => [f.depIata, f.arrIata]))
+    new Set([
+      ...passportFlights.flatMap((f) => [f.depIata, f.arrIata]),
+      ...savedFlightAirports
+    ])
   );
 
   return (
@@ -263,7 +305,6 @@ export default function ProfilePage() {
           <div className="card-inner">
             <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
               <Link href="/" className="btn btn-secondary">Home</Link>
-              <Link href="/flight" className="btn btn-secondary">Flights</Link>
             </div>
 
             <div className="row" style={{ gap: 8, marginBottom: 16 }}>

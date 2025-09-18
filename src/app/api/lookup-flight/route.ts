@@ -78,8 +78,8 @@ export async function POST(req:Request){
     const airlineName = adb?.airline?.name || adb?.airline?.code || undefined;
     const airlineCode = adb?.airline?.code || (f.match(/^[A-Za-z]{2,3}/)?.[0]?.toUpperCase()) || undefined;
     const status = (adb?.status || adb?.statusText || 'scheduled') as string;
-    const termGateDep = { terminal: adb?.departure?.terminal, gate: adb?.departure?.gate }; 
-    const termGateArr = { terminal: adb?.arrival?.terminal, gate: adb?.arrival?.gate };
+    const termGateDep = { terminal: adb?.departure?.terminal, gate: adb?.departure?.gate };
+    const termGateArr = { terminal: adb?.arrival?.terminal, gate: adb?.arrival?.gate, carousel: adb?.arrival?.carousel || adb?.arrival?.baggageClaim };
     const aircraftType = adb?.aircraft?.model || adb?.aircraft?.type || undefined;
     const isIntl = (!!depAp && !!arrAp) ? !String(depAp).startsWith('Y') !== !String(arrAp).startsWith('Y') : false;
 
@@ -143,7 +143,15 @@ export async function POST(req:Request){
   const durationMin = isIntl ? 540 : 75; // demo durations
   const arrISO = depISO ? new Date(new Date(depISO).getTime() + durationMin * 60000).toISOString() : undefined;
   const aircraftType = (carrier === 'AC') ? 'Boeing 737-800' : (carrier === 'WS') ? 'Boeing 787-9' : 'Airbus A320';
-  const terminalGate = (code: string) => ({ terminal: (code === 'YYZ' || code === 'YUL') ? '1' : 'Main', gate: `B${(num % 25) + 1}` });
+  const terminalGate = (code: string) => ({
+    terminal: (code === 'YYZ' || code === 'YUL') ? '1' : 'Main',
+    gate: `B${(num % 25) + 1}`
+  });
+  const terminalGateWithCarousel = (code: string) => ({
+    terminal: (code === 'YYZ' || code === 'YUL') ? '1' : 'Main',
+    gate: `B${(num % 25) + 1}`,
+    carousel: `${(num % 12) + 1}` // Carousel 1-12
+  });
 
   return Response.json({
     ...out,
@@ -152,7 +160,7 @@ export async function POST(req:Request){
     airlineName: meta?.name || out.airline,
     departureLocalISO: out.departureLocalISO, // Ensure this is always present for frontend consistency
     departure: { airport: depAirport, scheduledLocalISO: depISO, ...terminalGate(depAirport) },
-    arrival: { airport: arrAirport, scheduledLocalISO: arrISO, ...terminalGate(arrAirport) },
+    arrival: { airport: arrAirport, scheduledLocalISO: arrISO, ...terminalGateWithCarousel(arrAirport) },
     status: 'scheduled',
     aircraft: { type: aircraftType },
   });
