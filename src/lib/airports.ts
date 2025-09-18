@@ -30,17 +30,19 @@ export function iataToIcao(iata: string): string | undefined {
 
 /* ---- Capacity tiers per airport (rough heuristics) ---- */
 const TIER_OVERRIDES: Record<string, CapacityTier> = {
-  // Mega hubs
+  // Mega hubs (highest traffic international airports)
   JFK:"mega", EWR:"mega", LGA:"large",
   ATL:"mega", ORD:"mega", LAX:"mega", DFW:"mega", DEN:"mega",
-  SFO:"mega", MIA:"large", IAH:"large", CLT:"large", PHX:"large", SEA:"large",
+  SFO:"mega", IAH:"mega", // Added IAH as mega - Houston is huge
+  // Large hubs
+  MIA:"large", CLT:"large", PHX:"large", SEA:"large",
   BOS:"large", PHL:"large", MSP:"large", DTW:"large", LAS:"large",
-  // Regionals/medium
+  DCA:"large", IAD:"large",
+  // Medium airports
   SJC:"medium", OAK:"medium", PDX:"medium", MDW:"medium", DAL:"medium",
-  AUS:"medium", TPA:"medium", FLL:"medium",
+  AUS:"medium", TPA:"medium", FLL:"medium", MCO:"large", // Added MCO as large
   // Canada
   YYZ:"mega", YUL:"large", YVR:"large", YOW:"medium", YEG:"medium", YWG:"small",
-  DCA:"large", IAD:"large",
 };
 
 export function capacityTierFor(iataOrIcao: string): CapacityTier {
@@ -54,16 +56,15 @@ export function capacityTierFor(iataOrIcao: string): CapacityTier {
 }
 
 /**
- * Typical capacity (departures) in a ±90 minute window for the tier.
- * These numbers are deliberately conservative and only used for a *percentage*
- * (we clamp later). Example: if we see 18 departures and tier=medium (36),
- * busyness = 50%.
+ * Realistic capacity (departures) in a ±90 minute window for the tier.
+ * These numbers represent high but normal operating levels - not absolute maximum.
+ * Updated to reflect real-world airport capacities more accurately.
  */
 const SATURATION_BY_TIER: Record<CapacityTier, number> = {
-  small: 18,
-  medium: 36,
-  large: 60,
-  mega: 90,
+  small: 40,   // Small airports: 40 departures in 3 hours is high activity
+  medium: 100, // Medium airports: 100 departures in 3 hours
+  large: 200,  // Large airports: 200 departures in 3 hours
+  mega: 450,   // Mega hubs like YYZ/ATL: 450 departures in 3 hours is busy but normal
 };
 
 export function saturationFor(tierOrIata: CapacityTier | string): number {

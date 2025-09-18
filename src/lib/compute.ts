@@ -10,6 +10,7 @@ export type RecommendInput = {
   options?: {
     checkedBags?: boolean;
     trustedTraveler?: boolean;
+    alreadyCheckedIn?: boolean;
     rideType?: "rideshare" | "self-park" | "dropoff";
     securityOverrideMinutes?: number;
   };
@@ -66,9 +67,9 @@ export async function computeRecommendation(input: RecommendInput): Promise<Reco
   const horizonHours = Math.max(0, Math.round((new Date(depTimeLocalISO).getTime() - now) / 3_600_000));
 
   let securityWaitMin = options?.securityOverrideMinutes;
-  let securitySource: RecommendOutput["meta"]["securitySource"] = securityWaitMin ? "override" : undefined;
+  let securitySource: "catsa" | "tsa-rapidapi" | "tsa" | "schedule" | "schedule+load" | "estimate" | "override" | undefined = securityWaitMin ? "override" : undefined;
   let securityDetail: string | undefined;
-  let busyness: RecommendOutput["meta"]["busyness"] | undefined;
+  let busyness: { source: string; count: number; score: number; capacityTier: string; windowMin: number; } | undefined;
 
   if (securityWaitMin === undefined) {
     if (horizonHours >= 6) {
@@ -111,7 +112,7 @@ export async function computeRecommendation(input: RecommendInput): Promise<Reco
   const policyFloorMin  = flightType === "international" ? 120 : 75;
 
   let chosenMin = Math.max(gateScenarioMin, bagScenarioMin, policyFloorMin);
-  let constraint: RecommendOutput["meta"]["constraint"] = "gate-close";
+  let constraint: "gate-close" | "bag-drop" | "policy-floor" = "gate-close";
   if (chosenMin === bagScenarioMin) constraint = "bag-drop";
   if (chosenMin === policyFloorMin) constraint = "policy-floor";
 

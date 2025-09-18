@@ -26,10 +26,14 @@ export async function POST(req: NextRequest) {
       ...result,
       airport: input.airport,
       departureLocalISO: input.depTimeLocalISO,
+      // Pass through flight details for results display
+      flightNumber: body?.flightNumber || undefined,
+      airline: body?.airline || undefined,
+      route: body?.route || undefined,
       flags: {
-        alreadyCheckedIn: input.options.alreadyCheckedIn,
-        hasCheckedBag: input.options.checkedBags,
-        trustedTraveler: input.options.trustedTraveler,
+        alreadyCheckedIn: input.options?.alreadyCheckedIn || false,
+        hasCheckedBag: input.options?.checkedBags || false,
+        trustedTraveler: input.options?.trustedTraveler || false,
         isInternational: input.flightType === "international",
       },
     }, null, 2), { status: 200, headers: { "content-type": "application/json" }});

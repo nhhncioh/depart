@@ -187,9 +187,10 @@ export async function predictSecurityFromScheduleWithLoad(
   const sb = await getScheduleBusyness(airport, depLocalISO, WINDOW);
   const legacy = toLegacyBusyness(airport, sb, WINDOW);
 
-  // map 1..100 busyness -> ~0.8x..2.2x multiplier (much more aggressive scaling)
-  const factor = 0.8 + (sb.busynessPercent / 100) * 1.4;
-  const minutes = clamp(Math.round(base * factor), 8, 180);
+  // map 1..100 busyness -> ~0.9x..1.3x multiplier (more conservative scaling)
+  // Normal airport traffic shouldn't dramatically increase security times for planning
+  const factor = 0.9 + (sb.busynessPercent / 100) * 0.4;
+  const minutes = clamp(Math.round(base * factor), 5, 90);
 
   // Human label from % busyness
   const label =
@@ -197,12 +198,12 @@ export async function predictSecurityFromScheduleWithLoad(
     sb.busynessPercent >= 71 ? "heavy" :
     sb.busynessPercent >= 41 ? "moderate" : "light";
 
-  // Range multipliers by label (wider when busier)
+  // Range multipliers by label (more conservative ranges)
   const range: [number, number] =
-    label === "peak"     ? [0.9, 1.6] :
-    label === "heavy"    ? [0.9, 1.4] :
-    label === "moderate" ? [0.8, 1.3] :
-                           [0.7, 1.1];
+    label === "peak"     ? [0.8, 1.4] :
+    label === "heavy"    ? [0.8, 1.3] :
+    label === "moderate" ? [0.7, 1.2] :
+                           [0.6, 1.0];
 
   const waitLo = clamp(Math.round(minutes * range[0]), 5, 150);
   const waitHi = Math.max(waitLo + 2, clamp(Math.round(minutes * range[1]), 8, 180));

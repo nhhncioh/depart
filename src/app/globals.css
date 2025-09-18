@@ -3,11 +3,13 @@
 @tailwind utilities;
 
 /* App surface (fallback bg, we also add per-page gradient via className) */
-:root { --bg: #f6f7fb; }
+/* Use dark background by default to match the app visuals */
+:root { --bg: #0b0d10; }
 html, body { height: 100%; }
 body {
   background: var(--bg);
-  color: #111827; /* gray-900 */
+  color: var(--text);
+  color-scheme: dark; /* render native controls in dark */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-family: -apple-system,"SF Pro Text","SF Pro Display",system-ui,"Segoe UI","Helvetica Neue",Arial,"Noto Sans",sans-serif;

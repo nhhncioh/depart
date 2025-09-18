@@ -1,6 +1,24 @@
-"use client";
+﻿"use client";
+function RiskGauge({ value }: { value: number }) {
+  const v = Math.max(0, Math.min(100, Math.round(value)));
+  const radius = 44;
+  const stroke = 10;
+  const circumference = Math.PI * radius; // half circumference (semi-circle)
+  const dash = (v / 100) * circumference;
+  const color = v >= 70 ? "#ff6b6b" : v >= 40 ? "#fbbc04" : "#51cf66";
+  const arcPath = `M ${-radius} 0 A ${radius} ${radius} 0 1 1 ${radius} 0`;
+  return (
+    <svg width={120} height={70} viewBox="0 0 120 70" aria-label={`Risk ${v}`}>
+      <g transform="translate(60,60)">
+        <path d={arcPath} fill="none" stroke="rgba(255,255,255,.15)" strokeWidth={stroke} strokeLinecap="round" />
+        <path d={arcPath} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={`${dash} ${circumference}`} />
+      </g>
+      <text x="60" y="52" textAnchor="middle" fontSize="12" fill="rgba(255,255,255,.8)">Risk {v}</text>
+    </svg>
+  );
+}
 import "./styles.css";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";/** ---------- tiny helpers (safe, self-contained) ---------- */
 
@@ -275,17 +293,17 @@ function getHolidaySurge(departureDate: Date): { factor: number; description: st
   
   // Check all surge periods
   for (const [date, name, points, desc] of extremeSurge) {
-    const result = checkDate(date, name, points, desc);
+    const result = checkDate(new Date(date), String(name), Number(points), String(desc));
     if (result) return result;
   }
   
   for (const [date, name, points, desc] of highSurge) {
-    const result = checkDate(date, name, points, desc);
+    const result = checkDate(new Date(date), String(name), Number(points), String(desc));
     if (result) return result;
   }
   
   for (const [date, name, points, desc] of canadianSurge) {
-    const result = checkDate(date, name, points, desc);
+    const result = checkDate(new Date(date), String(name), Number(points), String(desc));
     if (result) return result;
   }
   
@@ -396,7 +414,7 @@ function generateDelayRisk(result: any) {
     factors.push({
       factor: "Airport Traffic",
       impact: bus.score >= 70 ? "High" : bus.score >= 40 ? "Moderate" : "Low",
-      description: `${bus.count || 0} departures in ±${bus.windowMin || 90} min window (${bus.score}% capacity)`,
+      description: `${bus.count || 0} departures in Â±${bus.windowMin || 90} min window (${bus.score}% capacity)`,
       points: busynessPoints
     });
   }
@@ -641,10 +659,62 @@ function bufferTextFor(_: string | null) {
   return "Includes check-in, security, walk, and contingency.";
 }
 
+function formatFlightDetails(result: any) {
+  const flightNumber = result?.flightNumber;
+  const airline = result?.airline;
+  const route = result?.route;
+  const departureTime = result?.departureLocalISO;
+
+  if (!flightNumber || !route?.departure?.airport || !route?.arrival?.airport) {
+    // Fallback to original display if no flight details
+    return null;
+  }
+
+  const depAirport = route.departure.airport;
+  const arrAirport = route.arrival.airport;
+  // Parse the time string - if it has 'Z' treat it as the literal time in the string
+  let depTime = '';
+  let depDate = '';
+
+  if (departureTime) {
+    // Extract time directly from the ISO string without timezone conversion
+    const timeMatch = departureTime.match(/T(\d{2}):(\d{2})/);
+    if (timeMatch) {
+      const hours = parseInt(timeMatch[1]);
+      const minutes = timeMatch[2];
+      if (hours === 0) {
+        depTime = `12:${minutes} AM`;
+      } else if (hours < 12) {
+        depTime = `${hours}:${minutes} AM`;
+      } else if (hours === 12) {
+        depTime = `12:${minutes} PM`;
+      } else {
+        depTime = `${hours - 12}:${minutes} PM`;
+      }
+    }
+
+    // Extract date directly from ISO string
+    const dateMatch = departureTime.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (dateMatch) {
+      const date = new Date(dateMatch[1] + 'T12:00:00'); // noon to avoid timezone issues
+      depDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+  }
+
+
+  return {
+    flightNumber,
+    airline: airline || flightNumber.match(/^[A-Z]{2}/)?.[0] || '',
+    route: `${depAirport} → ${arrAirport}`,
+    time: depTime,
+    date: depDate
+  };
+}
 
 
 
-export default function ResultPage() {
+
+function ResultPageContent() {
   const sp = useSearchParams();
   const [showRaw, setShowRaw] = useState(false);
 
@@ -711,6 +781,43 @@ export default function ResultPage() {
     return (
       <main className="app-shell">
         <div className="container">
+
+        {/* Executive Summary */}
+        {result && (
+          <section className="card card-lg" style={{ marginBottom: 14 }}>
+            <div className="card-inner">
+              <div className="kicker">Executive summary</div>
+              {(() => {
+                const normalArr = result?.bands?.normalArriveLocalISO || result?.arriveAirportLocalISO;
+                const aggrArr = result?.bands?.aggressiveArriveLocalISO || normalArr;
+                const cautArr = result?.bands?.cautiousArriveLocalISO || normalArr;
+                const normalLbl = fmtTimeISOStable(normalArr);
+                const rangeLbl = `${fmtTimeISOStable(aggrArr)}–${fmtTimeISOStable(cautArr)}`;
+                const securityMin = Number(result?.breakdown?.securityWaitMin ?? 0);
+                const busyScore = Number(result?.meta?.busyness?.score ?? 0);
+                const risk = Math.max(0, Math.min(100, Math.round(busyScore * 0.6 + Math.min(securityMin, 90) / 90 * 40)));
+                const busySrc = result?.meta?.securitySource || 'estimate';
+                return (
+                  <>
+                    <h2 className="time-big" suppressHydrationWarning style={{ fontSize: 36, marginBottom: 6 }}>Arrive at {rangeLbl}</h2>
+                    <div className="help" style={{ marginBottom: 12 }}>Normal window: <strong suppressHydrationWarning>{normalLbl}</strong></div>
+                    <div className="row" style={{ gap: 8, marginBottom: 10 }}>
+                      <div className="chip" title="Faster, tighter window" suppressHydrationWarning>Aggressive: <strong>{fmtTimeISOStable(aggrArr)}</strong></div>
+                      <div className="chip" style={{ borderColor: 'var(--accent, #6ee7ff)' }} title="Recommended" suppressHydrationWarning>Normal: <strong>{normalLbl}</strong></div>
+                      <div className="chip" title="Extra buffer" suppressHydrationWarning>Cautious: <strong>{fmtTimeISOStable(cautArr)}</strong></div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                      <RiskGauge value={risk} />
+                      <div className="help" suppressHydrationWarning>
+                        Risk level reflects busyness ({busyScore}%) and security wait ({securityMin} min, {busySrc}).
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </section>
+        )}
           <div className="card card-lg">
             <div className="card-inner" style={{ textAlign: "center" }}>
               <h1 suppressHydrationWarning data-hero-title>{fmtTimeISOStable(headerISO) ?? "\u2014"}</h1>
@@ -747,13 +854,33 @@ export default function ResultPage() {
           <section className="card card-lg">
             <div className="card-inner">
               <div className="kicker">Suggested arrival</div>
-              {(result?.airport || result?.departureLocalISO) && (
-                <div className="help" style={{ marginTop: 4 }} suppressHydrationWarning>
-                  {result?.airport}
-                  {result?.airport && result?.departureLocalISO ? " \u00B7 " : ""}
-                  {fmtDateTimeISO(result?.departureLocalISO)}
-                </div>
-              )}
+              {(() => {
+                const flightDetails = formatFlightDetails(result);
+                if (flightDetails) {
+                  return (
+                    <div style={{ marginTop: 4, marginBottom: 12 }}>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }} suppressHydrationWarning>
+                        {flightDetails.airline} {flightDetails.flightNumber}
+                      </div>
+                      <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 2 }} suppressHydrationWarning>
+                        {flightDetails.route}
+                      </div>
+                      <div className="help" suppressHydrationWarning>
+                        {flightDetails.time} • {flightDetails.date}
+                      </div>
+                    </div>
+                  );
+                } else if (result?.airport || result?.departureLocalISO) {
+                  return (
+                    <div className="help" style={{ marginTop: 4 }} suppressHydrationWarning>
+                      {result?.airport}
+                      {result?.airport && result?.departureLocalISO ? " \u00B7 " : ""}
+                      {fmtDateTimeISO(result?.departureLocalISO)}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               <div className="time-big" suppressHydrationWarning>{fmtTimeISOStable(heroISO) ?? "\u2014"}</div>
               <p className="help" style={{ marginTop: 8 }} suppressHydrationWarning>{buffers}</p>
@@ -1219,7 +1346,13 @@ export default function ResultPage() {
   );
 }
 
-
+export default function ResultPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ResultPageContent />
+    </Suspense>
+  );
+}
 
 
 

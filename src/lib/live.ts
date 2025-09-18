@@ -170,30 +170,31 @@ async function fetchTSAWorker(iata: string): Promise<LiveFetch | undefined> {
 export function estimateByHour(iata: string, depLocalISO: string, trustedTraveler?: boolean): number {
   const hour = new Date(depLocalISO).getHours();
   const code = iata.toUpperCase();
-  
-  // Hour-based baseline
-  let base = 15;
-  if (hour >= 5 && hour < 8) base = 35;        // Early morning rush - increased
-  else if (hour >= 8 && hour < 11) base = 25;  // Morning rush - increased  
-  else if (hour >= 11 && hour < 15) base = 20; // Midday - increased
-  else if (hour >= 15 && hour < 19) base = 30; // Afternoon/evening rush - increased
-  else if (hour >= 19 && hour < 23) base = 15; // Evening - increased
-  else base = 12; // Late night/early morning - increased
-  
-  // Airport size adjustment
+
+  // Hour-based baseline - reduced for realistic planning estimates
+  // These represent typical advance-planning wait times, not worst-case scenarios
+  let base = 12;
+  if (hour >= 5 && hour < 8) base = 18;        // Early morning rush
+  else if (hour >= 8 && hour < 11) base = 15;  // Morning rush
+  else if (hour >= 11 && hour < 15) base = 12; // Midday
+  else if (hour >= 15 && hour < 19) base = 16; // Afternoon/evening rush
+  else if (hour >= 19 && hour < 23) base = 10; // Evening
+  else base = 8; // Late night/early morning
+
+  // Airport size adjustment - more modest multipliers
   const majorHubs = ["YYZ", "YVR", "YUL", "YYC", "LAX", "JFK", "LGA", "EWR", "ORD", "ATL", "DFW", "DEN", "SFO", "SEA", "BOS", "IAD", "DCA"];
   const largeAirports = ["YOW", "YEG", "YWG", "YHZ", "PHX", "LAS", "MIA", "MCO", "CLT", "MSP", "DTW", "PHL"];
   const smallAirports = ["YTZ", "YQR", "YKF", "YQG"];
-  
+
   if (majorHubs.includes(code)) {
-    base = Math.round(base * 1.5); // Major hubs get 50% more time
+    base = Math.round(base * 1.3); // Major hubs get 30% more time (reduced from 50%)
   } else if (largeAirports.includes(code)) {
-    base = Math.round(base * 1.2); // Large airports get 20% more time  
+    base = Math.round(base * 1.1); // Large airports get 10% more time (reduced from 20%)
   } else if (smallAirports.includes(code)) {
-    base = Math.max(8, base - 5); // Small airports get slight reduction
+    base = Math.max(5, base - 3); // Small airports get slight reduction
   }
-  
-  if (trustedTraveler) base = Math.max(8, Math.round(base * 0.65));
+
+  if (trustedTraveler) base = Math.max(5, Math.round(base * 0.6));
   return base;
 }
 
