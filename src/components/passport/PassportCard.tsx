@@ -57,14 +57,14 @@ export default function PassportCard({ stats, routesForMap, airportsInUse, usern
       <div className="absolute inset-2 rounded-2xl border border-white/10 pointer-events-none" />
 
       <div
-        className="p-8 md:p-10 space-y-6 md:space-y-8"
+        className="p-6 md:p-10 space-y-4 md:space-y-8"
         style={{ fontFeatureSettings: '"liga" on, "kern" on', WebkitFontSmoothing: "antialiased" as any }}
       >
         {/* Header */}
         <div className="flex justify-between items-start">
           <div>
-            <div className="text-2xl font-bold text-white mb-1">MY DEPART PASSPORT</div>
-            <div className="text-xs text-white/70 tracking-wide">PASSPORT • PASS • PASAPORTE</div>
+            <div className="text-xl md:text-2xl font-bold text-white mb-1">MY DEPART PASSPORT</div>
+            <div className="text-xs md:text-xs text-white/70 tracking-wide">PASSPORT • PASS • PASAPORTE</div>
           </div>
           <div className="text-right text-sm text-white/80">
             <div className="font-semibold">Authority</div>
@@ -73,7 +73,7 @@ export default function PassportCard({ stats, routesForMap, airportsInUse, usern
         </div>
 
         {/* World Map */}
-        <div className="h-72 md:h-80 lg:h-64 mb-6 rounded-xl overflow-hidden">
+        <div className="h-80 md:h-80 lg:h-64 mb-4 md:mb-6 rounded-xl overflow-hidden">
           <WorldMap routes={routesForMap} airportsInUse={airportsInUse} className="h-full" />
         </div>
 
@@ -87,9 +87,9 @@ export default function PassportCard({ stats, routesForMap, airportsInUse, usern
         </div>
 
         {/* Stats and Issuer Grid */}
-        <div className="grid grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
           {/* Stats Grid */}
-          <div className="space-y-4">
+          <div className="space-y-3 md:space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center">
                 <div className="text-3xl font-bold text-white mb-1">{stats.totalFlights.toLocaleString()}</div>
@@ -117,7 +117,7 @@ export default function PassportCard({ stats, routesForMap, airportsInUse, usern
           </div>
 
           {/* Issuer Block */}
-          <div className="text-right space-y-3 text-sm text-white/80">
+          <div className="text-left md:text-right space-y-2 md:space-y-3 text-sm text-white/80">
             <div>
               <div className="font-semibold text-white mb-1">Place of issue</div>
               <div>{stats.placeOfIssueIata}</div>
