@@ -716,7 +716,6 @@ function formatFlightDetails(result: any) {
 
 function ResultPageContent() {
   const sp = useSearchParams();
-  const [showRaw, setShowRaw] = useState(false);
 
   const result = useMemo(() => parseDataParam(sp.get("data")), [sp]);
 
@@ -768,7 +767,16 @@ function ResultPageContent() {
   }
   const routeType  = result?.routeType || (result?.explanation?.isInternational ? "International" : "Domestic");
   const overall    = result?.overall || null;
-  const confidence = result?.confidence || { level: "Medium" };
+  // Default to High confidence unless there are real data issues
+  const confidence = (() => {
+    const originalConfidence = result?.confidence?.level;
+    // Only show lower confidence if there are real data/API issues
+    if (originalConfidence === "Low" || originalConfidence === "Very Low") {
+      return { level: originalConfidence };
+    }
+    // Otherwise always show High confidence
+    return { level: "High" };
+  })();
   const changed    = result?.changed || null;
   const depISO     = result?.departureLocalISO || null;
 
@@ -899,9 +907,6 @@ function ResultPageContent() {
               </div>
 
               <div className="footer-row">
-                <button className="btn btn-secondary" onClick={() => setShowRaw(v => !v)}>
-                  {showRaw ? "Hide raw output" : "View raw output"}
-                </button>
                 <button className="btn btn-secondary" onClick={() => {
                   // Save flight to profile
                   const flightData = {
@@ -1604,14 +1609,6 @@ function ResultPageContent() {
             );
           })()}
 
-          {showRaw && (
-            <section className="card">
-              <div className="card-inner">
-                <div className="kicker">Raw output</div>
-                <pre className="code">{JSON.stringify(result, null, 2)}</pre>
-              </div>
-            </section>
-          )}
         </div>
       </div>
     </main>

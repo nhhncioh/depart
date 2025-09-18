@@ -510,17 +510,30 @@ export default function ProfilePage() {
                 username={preferences.name}
               />
 
-              <div className="row" style={{ marginTop: 16, justifyContent: "center" }}>
-                <a
-                  href={`/passport/og?u=${encodeURIComponent(preferences.name || "traveler")}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+              <div className="row" style={{ marginTop: 16, justifyContent: "center", gap: 12 }}>
+                <button
                   className="btn btn-secondary"
+                  onClick={() => {
+                    const ogUrl = `/passport/og?u=${encodeURIComponent(preferences.name || "traveler")}`;
+                    window.open(ogUrl, '_blank');
+                  }}
+                  title="Generate shareable image"
                 >
-                  Share image
-                </a>
-                <button className="btn btn-secondary" onClick={() => window.print()}>
-                  Print / Save PDF
+                  📸 Share Image
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    try {
+                      window.print();
+                    } catch (error) {
+                      console.error('Print failed:', error);
+                      alert('Printing failed. Please try using your browser\'s print menu (Ctrl/Cmd + P)');
+                    }
+                  }}
+                  title="Print or save as PDF"
+                >
+                  🖨️ Export PDF
                 </button>
               </div>
             </div>
