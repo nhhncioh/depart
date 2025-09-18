@@ -44,16 +44,18 @@ export default function PassportCard({ stats, routesForMap, airportsInUse, usern
     <>
       {/* Mobile-first clean design */}
       <div className="block md:hidden">
-        {/* Simple mobile header */}
-        <div className="mb-4">
-          <h2 className="text-2xl font-bold text-white mb-2">Travel Statistics</h2>
-          <p className="text-white/70 text-sm">Your journey mapped out</p>
+        {/* Full screen mobile map */}
+        <div className="h-screen w-screen fixed top-0 left-0 z-10 bg-black/20">
+          <WorldMap routes={routesForMap} airportsInUse={airportsInUse} className="h-full w-full" />
         </div>
 
-        {/* Large mobile map */}
-        <div className="h-96 mb-6 rounded-xl overflow-hidden bg-black/20">
-          <WorldMap routes={routesForMap} airportsInUse={airportsInUse} className="h-full" />
-        </div>
+        {/* Scrollable content below map */}
+        <div className="relative z-20 mt-screen bg-gray-900/95 backdrop-blur-sm min-h-screen pt-8 px-4">
+          {/* Simple mobile header */}
+          <div className="mb-6 text-center">
+            <h2 className="text-3xl font-bold text-white mb-2">Travel Statistics</h2>
+            <p className="text-white/70 text-base">Your journey mapped out</p>
+          </div>
 
         {/* Country flags */}
         <div className="flex gap-2 overflow-x-auto pb-4 mb-6" style={{ scrollbarWidth: "thin" }}>
@@ -84,12 +86,13 @@ export default function PassportCard({ stats, routesForMap, airportsInUse, usern
           </div>
         </div>
 
-        {/* Simple member info */}
-        <div className="bg-white/5 rounded-lg p-4 text-sm text-white/80">
-          <div className="text-white font-semibold mb-2">Member Info</div>
-          <div className="space-y-1">
-            <div>Since: {formatPassportDate(stats.firstSeenDate)}</div>
-            <div>Base: {stats.placeOfIssueIata}</div>
+          {/* Simple member info */}
+          <div className="bg-white/5 rounded-lg p-4 text-sm text-white/80">
+            <div className="text-white font-semibold mb-2">Member Info</div>
+            <div className="space-y-1">
+              <div>Since: {formatPassportDate(stats.firstSeenDate)}</div>
+              <div>Base: {stats.placeOfIssueIata}</div>
+            </div>
           </div>
         </div>
       </div>
